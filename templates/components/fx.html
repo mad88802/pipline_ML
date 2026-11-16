@@ -1,0 +1,39 @@
+{# UI layer: data for the command palette + interaction script. Presentation only. #}
+{% set _case_list = (all_cases.values()|list) if all_cases is defined else [
+  {'id':'descriptive','title':'Analyse Descriptive','icon':'📊','step_num':'01'},
+  {'id':'noise','title':'Noise (Bruit)','icon':'〰️','step_num':'02'},
+  {'id':'outliers','title':'Outliers (Aberrants)','icon':'📦','step_num':'03'},
+  {'id':'distribution','title':'Distribution (Cible & KDE)','icon':'📈','step_num':'04'},
+  {'id':'feature-importance','title':'Feature Importance','icon':'⭐','step_num':'05'},
+  {'id':'quality','title':'Data Quality','icon':'🩺','step_num':'06'}] %}
+{% set ns = namespace(cases=[]) %}
+{% for c in _case_list %}{% set ns.cases = ns.cases + [{'id': c.id, 'title': c.title, 'icon': c.icon, 'step': c.step_num}] %}{% endfor %}
+{% set _prev = current_case.prev_case if (current_case is defined and current_case) else none %}
+{% set _next = current_case.next_case if (current_case is defined and current_case) else none %}
+{% set _active = active_dataset if active_dataset is defined else none %}
+{% set _theme = dataset_theme(_active) if _active else none %}
+<script id="fx-data" type="application/json">{{ {
+  "datasets": datasets if datasets is defined else [],
+  "active": _active,
+  "theme": _theme,
+  "themeBg": url_for('theme_bg', theme=_theme) if _theme else none,
+  "themeColors": theme_palette(_theme) if _theme else none,
+  "urls": {
+    "index": url_for('index'),
+    "upload": url_for('upload_page'),
+    "dataset": url_for('view_dataset', dataset_name='__D__'),
+    "case": url_for('view_case_detail', dataset_name='__D__', case_name='__C__'),
+    "phase": url_for('view_phase_detail', dataset_name='__D__', phase_name='__C__')
+  },
+  "cases": ns.cases,
+  "phases": [
+    {"id":"preprocessing","title":"Prétraitement","icon":"🧹","status":"à configurer"},
+    {"id":"split","title":"Train / Test Split","icon":"✂️","status":"à configurer"},
+    {"id":"model","title":"Model Selection","icon":"🤖","status":"à configurer"}
+  ],
+  "prev": url_for('view_case_detail', dataset_name=_active, case_name=_prev) if (_prev and _active) else none,
+  "next": url_for('view_case_detail', dataset_name=_active, case_name=_next) if (_next and _active) else none
+}|tojson }}</script>
+<script src="{{ url_for('static', filename='js/theme-scenes.js') }}"></script>
+<script src="{{ url_for('static', filename='js/fx.js') }}"></script>
+{% include 'components/agent.html' %}

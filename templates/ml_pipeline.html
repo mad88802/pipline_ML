@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pipeline Machine Learning — {{ active_dataset }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body class="pipeline-page" data-dataset="{{ active_dataset }}">
+
+  <main class="container pipe-hero-container" style="max-width: 1400px; padding-top: 2.5rem; padding-bottom: 6rem;">
+
+    <div class="topbar">
+      <a href="{{ url_for('index') }}" class="btn btn-outline">← Autres datasets</a>
+      <div class="dataset-pill"><img class="pill-cover" src="{{ url_for('dataset_cover', name=active_dataset) }}" alt=""><span>Dataset : <strong>{{ active_dataset }}</strong></span></div>
+    </div>
+
+    <header style="text-align:center;">
+      <span class="step-tag">Pipeline ML · 6 étapes</span>
+      <h1 class="page-hero-title" style="margin-top:1rem; font-size: clamp(2rem, 4.5vw, 3rem);"><span class="grad-text">{{ active_dataset }}</span></h1>
+      <p class="page-lead">Du premier regard sur les données jusqu'à l'évaluation du modèle.</p>
+      <div class="facts">
+        <span class="fact"><b>{{ "{:,}".format(summary.n_rows) if summary.n_rows else "—" }}</b> lignes</span>
+        <span class="fact"><b>{{ summary.n_columns if summary.n_columns else "—" }}</b> colonnes</span>
+        {% if summary.numeric_columns is defined %}<span class="fact"><b>{{ summary.numeric_columns|length }}</b> numériques</span>{% endif %}
+        {% if summary.categorical_columns is defined %}<span class="fact"><b>{{ summary.categorical_columns|length }}</b> catégorielles</span>{% endif %}
+      </div>
+    </header>
+
+    {% set active_pipeline_phase = '' %}
+    {% set compact_nav = false %}
+    <div style="margin-top: 3.5rem; max-width: 1200px; margin-left: auto; margin-right: auto;">
+      {% include 'components/pipeline_nav.html' %}
+    </div>
+
+  </main>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% include 'components/fx.html' %}
+</body>
+</html>

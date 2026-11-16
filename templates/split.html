@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ current_phase.title }} — {{ active_dataset }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+  <style>
+    .sp-step{margin-top:0}
+.sp-pager{display:flex;justify-content:space-between;align-items:center;gap:.7rem;flex-wrap:wrap;margin-top:1.6rem;padding-top:1.1rem;border-top:1px solid var(--border-subtle)}
+    .sp-step-h{display:flex;align-items:center;gap:.8rem;margin-bottom:.4rem}
+    .sp-num{width:30px;height:30px;flex:none;display:grid;place-items:center;font-weight:800;font-size:.9rem;color:#fff;border-radius:10px;background:linear-gradient(135deg,rgb(var(--ac-1)),rgb(var(--ac-3)))}
+    .sp-step-h h2{margin:0;font-size:1.15rem}
+    .sp-desc{margin:.2rem 0 1rem;color:var(--text-secondary);font-size:.86rem;max-width:80ch}
+    .sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin:1rem 0}
+    .sp-grid label.sp-f{display:flex;flex-direction:column;gap:.35rem;font-size:.82rem;color:var(--text-secondary)}
+    .sp-grid select{padding:.5rem .6rem;border-radius:10px;border:1px solid var(--border-subtle);background:var(--bg-input);color:var(--text-main)}
+    .sp-xhead{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin:.4rem 0 .6rem}
+    .sp-xhead b{font-size:.9rem}
+    .sp-mini{padding:.25rem .65rem;font:inherit;font-size:.76rem;font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border-subtle);border-radius:999px;cursor:pointer;margin-left:.3rem}
+    .sp-mini:hover{color:var(--text-main);border-color:rgb(var(--ac-2) / .5)}
+    .sp-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.5rem;max-height:300px;overflow:auto;padding:.2rem}
+    .sp-col{display:flex;align-items:center;gap:.55rem;padding:.5rem .7rem;font-size:.82rem;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:10px;cursor:pointer;min-width:0}
+    .sp-col span.nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .sp-col.off{opacity:.5}
+    .sp-col.is-y{display:none}
+    .sp-tag{flex:none;font-size:.64rem;font-weight:700;padding:.08rem .4rem;border-radius:999px;color:var(--text-muted);background:rgb(148 163 184 / .16)}
+    .sp-tag.num{color:#0369a1;background:rgb(14 165 233 / .14)}.sp-tag.cat{color:#0f766e;background:rgb(20 184 166 / .14)}
+    .sp-xy{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;font-size:.82rem}
+    .sp-pill{padding:.25rem .7rem;border-radius:999px;background:rgb(var(--ac-2) / .12);border:1px solid rgb(var(--ac-2) / .3)}
+    .sp-strats{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.8rem}
+    .sp-strat{position:relative;display:flex;flex-direction:column;gap:.3rem;padding:.9rem 1rem;background:var(--bg-input);border:1.5px solid var(--border-subtle);border-radius:14px;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+    .sp-strat input{position:absolute;opacity:0;inset:0;cursor:pointer;margin:0}
+    .sp-strat b{font-size:.95rem}.sp-strat small{color:var(--text-muted);font-size:.78rem;line-height:1.35}
+    .sp-strat.on{border-color:rgb(var(--ac-1));box-shadow:0 0 0 3px rgb(var(--ac-1) / .15)}
+    .sp-strat.dis{opacity:.5;cursor:not-allowed}.sp-strat.dis input{cursor:not-allowed}
+    .sp-rec{align-self:flex-start;font-size:.64rem;font-weight:700;padding:.08rem .45rem;border-radius:999px;color:#047857;background:rgb(16 185 129 / .14)}
+    .sp-presets{display:flex;gap:.5rem;flex-wrap:wrap;margin:.2rem 0 .9rem}
+    .sp-presets .sp-mini{margin:0}.sp-presets .sp-mini.on{color:#fff;border-color:transparent;background:linear-gradient(135deg,rgb(var(--ac-1)),rgb(var(--ac-3)))}
+    .sp-range{display:flex;align-items:center;gap:.8rem;max-width:520px}
+    .sp-range input[type=range]{flex:1;accent-color:rgb(var(--ac-1))}
+    .sp-range output{min-width:7.5rem;text-align:right;font-variant-numeric:tabular-nums;color:var(--text-main);font-weight:700;font-size:.88rem}
+    .sp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin:1rem 0}
+    .sp-stat{background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:10px;padding:.6rem .8rem}
+    .sp-stat small{color:var(--text-muted);font-size:.72rem}
+    .sp-stat b{display:block;font-size:1.15rem;font-variant-numeric:tabular-nums}
+    .sp-bar{display:flex;height:16px;border-radius:8px;overflow:hidden;background:var(--border-subtle);margin:.5rem 0 1rem}
+    .sp-bar i{display:block;height:100%}
+    .sp-bar .tr{background:#14b8a6}.sp-bar .te{background:#f59e0b}
+    .sp-legend{display:flex;gap:1.2rem;font-size:.78rem;color:var(--text-secondary);margin-bottom:.6rem}
+    .sp-legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:.4rem;vertical-align:-1px}
+    .sp-legend .tr::before{background:#14b8a6}.sp-legend .te::before{background:#f59e0b}
+    .sp-cls{display:grid;grid-template-columns:minmax(100px,200px) 1fr 110px;gap:.6rem;align-items:center;font-size:.8rem;padding:.2rem 0}
+    .sp-note{color:var(--text-muted);font-size:.82rem;margin-top:.8rem}
+    .sp-warn{margin:.8rem 0 0;padding:.55rem .8rem;font-size:.82rem;color:#b45309;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:10px}
+    .sp-actions{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-top:1.2rem}
+  </style>
+</head>
+<body class="case-detail-page eda-page pp-page" data-dataset="{{ active_dataset }}" style="margin: 0; padding: 0;">
+<div style="max-width: 1400px; margin: 1.5rem auto 0; padding: 0 1.5rem;">
+    <div class="topbar" style="margin-bottom: 1.25rem;">
+      <a href="{{ url_for('view_dataset', dataset_name=active_dataset) }}" class="btn btn-outline">← Pipeline ML</a>
+      <div class="dataset-pill"><img class="pill-cover" src="{{ url_for('dataset_cover', name=active_dataset) }}" alt=""><span>Dataset : <strong>{{ active_dataset }}</strong></span></div>
+    </div>
+  </div>
+
+  <div class="eda-page-wrapper">
+  {% if error %}
+    <section class="section-card empty-phase">
+      <div class="empty-phase-icon">⚠️</div>
+      <h1 style="margin-top:.8rem;">Données illisibles</h1>
+      <p style="max-width:62ch; margin-left:auto; margin-right:auto;">{{ error }}</p>
+      <a href="{{ url_for('upload_page') }}" class="btn btn-primary">Réimporter le fichier</a>
+    </section>
+  {% else %}
+    <div class="eda-layout">
+
+      <!-- ============ LEFT SIDEBAR : étapes du split ============ -->
+      <aside class="eda-sidebar">
+        <div class="eda-sidebar-section-title"><span>Étapes du split</span><span class="eda-sidebar-step-badge">4</span></div>
+        <nav class="eda-nav-list" id="spNav">
+          <a href="#sp-xy" class="eda-nav-item active" data-panel="xy">
+            <span class="eda-nav-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="16" rx="1.5"/><path d="M18 8h3M18 12h3M18 16h3"/></svg></span>
+            <div class="eda-nav-text"><span class="eda-nav-title">Identifier X et y</span><small class="pp-nav-sub" id="sd-xy"></small></div>
+            <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+          </a>
+          <a href="#sp-strategy" class="eda-nav-item" data-panel="strategy">
+            <span class="eda-nav-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg></span>
+            <div class="eda-nav-text"><span class="eda-nav-title">Choisir la stratégie de découpage</span><small class="pp-nav-sub" id="sd-strategy"></small></div>
+            <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+          </a>
+          <a href="#sp-ratio" class="eda-nav-item" data-panel="ratio">
+            <span class="eda-nav-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></span>
+            <div class="eda-nav-text"><span class="eda-nav-title">Choisir le ratio du split</span><small class="pp-nav-sub" id="sd-ratio"></small></div>
+            <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+          </a>
+          <a href="#sp-preview" class="eda-nav-item" data-panel="preview">
+            <span class="eda-nav-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span>
+            <div class="eda-nav-text"><span class="eda-nav-title">Aperçu du découpage et enregistrer le split</span><small class="pp-nav-sub" id="sd-preview"></small></div>
+            <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+          </a>
+        </nav>
+      </aside>
+
+      <!-- ============ RIGHT : un panneau à la fois ============ -->
+      <main class="eda-main-content">
+        <div class="eda-content-header" style="margin-bottom: 1.5rem; padding-bottom: 0.75rem;">
+          <div><h1 class="eda-content-title" id="spTitle" style="font-size: 1.85rem;">Identifier X et y</h1>
+            {% if sp.dataset_type == 'time_series' %}<p style="color:var(--text-secondary);margin:.3rem 0 0;font-size:.85rem">Série temporelle détectée : le découpage <b>chronologique</b> est recommandé.</p>{% endif %}</div>
+        </div>
+
+        <!-- 1 · X et y -->
+        <section class="pp-panel-view" id="sp-xy" data-panel="xy">
+          <div class="section-card">
+            <div class="sp-step">
+              <div class="sp-grid">
+                <label class="sp-f">y — Variable cible
+                  <select id="s-target">
+                    <option value="">Aucune</option>
+                    {% for c in sp.columns %}<option value="{{ c }}" {{ 'selected' if c == sp.config.target }}>{{ c }}{{ ' (détectée)' if c == sp.detected_target }}</option>{% endfor %}
+                  </select>
+                </label>
+              </div>
+              <div class="sp-xhead">
+                <b>X — Variables explicatives <span id="s-xcount" class="sp-tag"></span></b>
+                <span><button type="button" class="sp-mini" id="s-all">Tout sélectionner</button><button type="button" class="sp-mini" id="s-none">Aucune</button></span>
+              </div>
+              <div class="sp-cols" id="s-cols"></div>
+              <div class="sp-xy" id="s-xy"></div>
+            </div>
+            <div class="sp-pager"><span></span><button type="button" class="btn btn-primary" data-go="strategy">Suivant : stratégie</button></div>
+          </div>
+        </section>
+
+        <!-- 2 · Stratégie -->
+        <section class="pp-panel-view" id="sp-strategy" data-panel="strategy" hidden>
+          <div class="section-card">
+            <div class="sp-step">
+              <p class="sp-desc">Comment les lignes sont réparties entre train et test.</p>
+              <div class="sp-strats" id="s-strats"></div>
+            </div>
+            <div class="sp-pager"><button type="button" class="btn btn-outline" data-go="xy">Précédent</button><button type="button" class="btn btn-primary" data-go="ratio">Suivant : ratio</button></div>
+          </div>
+        </section>
+
+        <!-- 3 · Ratio -->
+        <section class="pp-panel-view" id="sp-ratio" data-panel="ratio" hidden>
+          <div class="section-card">
+            <div class="sp-step">
+              <p class="sp-desc">Part des lignes mise de côté pour le test (0 % = pas de split).</p>
+              <div class="sp-presets" id="s-presets">
+                <button type="button" class="sp-mini" data-t="10">90 / 10</button>
+                <button type="button" class="sp-mini" data-t="20">80 / 20</button>
+                <button type="button" class="sp-mini" data-t="25">75 / 25</button>
+                <button type="button" class="sp-mini" data-t="30">70 / 30</button>
+                <button type="button" class="sp-mini" data-t="40">60 / 40</button>
+              </div>
+              <div class="sp-range">
+                <input type="range" id="s-test" min="0" max="50" step="5" value="{{ (sp.config.test_size * 100) | round | int }}">
+                <output id="s-test-out"></output>
+              </div>
+            </div>
+            <div class="sp-pager"><button type="button" class="btn btn-outline" data-go="strategy">Précédent</button><button type="button" class="btn btn-primary" data-go="preview">Suivant : aperçu</button></div>
+          </div>
+        </section>
+
+        <!-- 4 · Aperçu + enregistrement -->
+        <section class="pp-panel-view" id="sp-preview" data-panel="preview" hidden>
+          <div class="section-card" id="s-result"></div>
+          <div class="section-card" style="margin-top:1.2rem">
+            <div class="sp-actions" style="margin-top:0">
+              <button class="btn btn-primary" id="s-save">Enregistrer le split</button>
+              <a class="btn btn-outline" id="s-next" href="{{ url_for('view_phase_detail', dataset_name=active_dataset, phase_name='model') }}">Model Selection ➔</a>
+              <button type="button" class="btn btn-outline" data-go="ratio">Précédent</button>
+            </div>
+            <p id="s-msg" style="color:var(--text-muted);font-size:.85rem;margin:.8rem 0 0">
+              {% if sp.saved %}✓ Split enregistré le {{ sp.saved_at.replace('T', ' à ') }}{% else %}Pas encore enregistré — le prétraitement utilisera 20 % par défaut.{% endif %}
+            </p>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  {% endif %}
+  </div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% if not error %}
+<script>
+(function () {
+  const ds = document.body.dataset.dataset;
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmt = n => Number(n).toLocaleString('fr-FR');
+  const SP = {{ sp | tojson }};
+  const info = {}; SP.column_info.forEach(c => info[c.name] = c);
+  const isTS = SP.dataset_type === 'time_series';
+  const saved = SP.config;
+  let selected = new Set(saved.features || SP.columns);          // X
+  let strategy = saved.strategy && saved.strategy !== 'auto' ? saved.strategy : null;
+
+  const target = () => $('#s-target').value || null;
+  const recommended = () => isTS ? 'chronological' : (target() && info[target()] && info[target()].classif ? 'stratified' : 'random');
+  const STRATS = [
+    { id: 'random', t: 'Aléatoire', d: "Les lignes de test sont tirées au hasard. Simple et adapté à des observations indépendantes." },
+    { id: 'stratified', t: 'Stratifié', d: "Garde les mêmes proportions de classes dans le train et le test. Nécessite une cible de classification." },
+    { id: 'chronological', t: 'Chronologique', d: "Le test regroupe les dernières lignes (le plus récent) : indispensable pour les séries temporelles, évite de prédire le passé avec le futur." }
+  ];
+
+  /* ---- 1 : X / y ---- */
+  function renderCols() {
+    const y = target();
+    $('#s-cols').innerHTML = SP.columns.map(c => {
+      const i = info[c], on = selected.has(c) && c !== y;
+      return `<label class="sp-col ${c === y ? 'is-y' : ''} ${on ? '' : 'off'}"><input type="checkbox" data-c="${esc(c)}" ${on ? 'checked' : ''}>
+        <span class="nm" title="${esc(c)}">${esc(c)}</span><span class="sp-tag ${i.numeric ? 'num' : 'cat'}">${i.numeric ? 'num' : 'texte'}</span></label>`;
+    }).join('');
+    $$('#s-cols input').forEach(cb => cb.addEventListener('change', () => {
+      cb.checked ? selected.add(cb.dataset.c) : selected.delete(cb.dataset.c);
+      cb.closest('.sp-col').classList.toggle('off', !cb.checked); summary(); preview();
+    }));
+    summary();
+  }
+  function xList() { const y = target(); return SP.columns.filter(c => c !== y && selected.has(c)); }
+  function summary() {
+    const x = xList(), tot = SP.columns.filter(c => c !== target()).length, y = target();
+    $('#s-xcount').textContent = x.length + ' / ' + tot;
+    $('#s-xy').innerHTML = `<span class="sp-pill"><b>X</b> : ${x.length} variable${x.length > 1 ? 's' : ''}</span>` +
+      `<span class="sp-pill"><b>y</b> : ${y ? esc(y) : 'aucune'}</span>`;
+    $('#s-save').disabled = x.length === 0;
+    side('xy', (y ? 'y : ' + y : 'y : aucune') + ' · ' + x.length + ' var.');
+  }
+  const STRAT_LABEL = { random: 'Aléatoire', stratified: 'Stratifié', chronological: 'Chronologique' };
+  const TITLES = { xy: 'Identifier X et y', strategy: 'Choisir la stratégie de découpage', ratio: 'Choisir le ratio du split', preview: 'Aperçu du découpage et enregistrer le split' };
+  function side(k, text) { const el = $('#sd-' + k); if (el) el.textContent = text; }
+
+  /* ---- sidebar : un panneau à la fois (comme EDA / prétraitement) ---- */
+  function showPanel(key) {
+    if (!TITLES[key]) key = 'xy';
+    $$('.pp-panel-view').forEach(p => p.hidden = p.dataset.panel !== key);
+    $$('#spNav .eda-nav-item').forEach(a => a.classList.toggle('active', a.dataset.panel === key));
+    $('#spTitle').textContent = TITLES[key];
+    try { history.replaceState(null, '', '#sp-' + key); } catch (e) {}
+  }
+  $$('#spNav .eda-nav-item').forEach(a => a.addEventListener('click', ev => { ev.preventDefault(); showPanel(a.dataset.panel); }));
+  $$('[data-go]').forEach(b => b.addEventListener('click', () => { showPanel(b.dataset.go); window.scrollTo({ top: 0, behavior: 'smooth' }); }));
+
+  /* ---- 2 : strategy ---- */
+  function renderStrats() {
+    const rec = recommended(), canStrat = !!(target() && info[target()] && info[target()].classif);
+    if (!strategy || (strategy === 'stratified' && !canStrat)) strategy = rec;
+    $('#s-strats').innerHTML = STRATS.map(s => {
+      const dis = s.id === 'stratified' && !canStrat;
+      return `<label class="sp-strat ${strategy === s.id ? 'on' : ''} ${dis ? 'dis' : ''}"><input type="radio" name="strat" value="${s.id}" ${strategy === s.id ? 'checked' : ''} ${dis ? 'disabled' : ''}>
+        <b>${s.t}</b>${s.id === rec ? '<span class="sp-rec">Recommandé</span>' : ''}<small>${s.d}${dis ? ' <i>(indisponible : choisissez une cible de classification)</i>' : ''}</small></label>`;
+    }).join('');
+    side('strategy', STRAT_LABEL[strategy] || '');
+    $$('input[name=strat]').forEach(r => r.addEventListener('change', () => { strategy = r.value; renderStrats(); preview(); }));
+  }
+
+  /* ---- 3 : ratio ---- */
+  function renderRatio() {
+    const t = +$('#s-test').value;
+    $('#s-test-out').textContent = `Train ${100 - t} % · Test ${t} %`;
+    $$('#s-presets .sp-mini').forEach(b => b.classList.toggle('on', +b.dataset.t === t));
+    side('ratio', 'Train ' + (100 - t) + ' % · Test ' + t + ' %');
+  }
+
+  /* ---- preview ---- */
+  const cfg = () => ({ target: target(), features: xList(), strategy: strategy || 'auto', test_size: (+$('#s-test').value) / 100 });
+  function render(p) {
+    const tot = Math.max(p.n_rows, 1);
+    side('preview', fmt(p.n_train) + ' train · ' + fmt(p.n_test) + ' test');
+    const cls = (p.classes || []).map(c => {
+      const t = Math.max(c.train + c.test, 1);
+      return `<div class="sp-cls"><span>${esc(c.label)}</span>
+        <div class="sp-bar" style="margin:0"><i class="tr" style="width:${(100 * c.train / t).toFixed(1)}%"></i><i class="te" style="width:${(100 * c.test / t).toFixed(1)}%"></i></div>
+        <span>${fmt(c.train)} / ${fmt(c.test)}</span></div>`;
+    }).join('');
+    $('#s-result').innerHTML = `
+      <div class="sp-stats">
+        <div class="sp-stat"><small>Lignes (cible non vide)</small><b>${fmt(p.n_rows)}</b></div>
+        <div class="sp-stat"><small>Train</small><b>${fmt(p.n_train)}</b></div>
+        <div class="sp-stat"><small>Test</small><b>${fmt(p.n_test)}</b></div>
+        <div class="sp-stat"><small>Stratégie</small><b>${esc(p.mode)}</b></div>
+      </div>
+      <div class="sp-legend"><span class="tr">Train</span><span class="te">Test</span></div>
+      <div class="sp-bar"><i class="tr" style="width:${(100 * p.n_train / tot).toFixed(1)}%"></i><i class="te" style="width:${(100 * p.n_test / tot).toFixed(1)}%"></i></div>
+      ${p.note ? `<p class="sp-warn">${esc(p.note)}</p>` : ''}
+      ${cls ? `<h3>Répartition des classes (train / test)</h3>${cls}` : ''}
+      <p class="sp-note">Les lignes sans valeur de cible sont retirées avant le découpage, comme dans le prétraitement.</p>`;
+  }
+
+  async function post(path) {
+    const res = await fetch(`/api/split/${encodeURIComponent(ds)}/${path}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg())
+    });
+    const j = await res.json();
+    if (j.status !== 'ok') throw new Error(j.message || 'Erreur');
+    return j;
+  }
+  let timer = null;
+  function preview() {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      try { render((await post('preview')).preview); } catch (e) { $('#s-msg').textContent = e.message; }
+    }, 150);
+  }
+
+  $('#s-target').addEventListener('change', () => { renderCols(); renderStrats(); preview(); });
+  $('#s-test').addEventListener('input', () => { renderRatio(); preview(); });
+  $$('#s-presets .sp-mini').forEach(b => b.addEventListener('click', () => { $('#s-test').value = b.dataset.t; renderRatio(); preview(); }));
+  $('#s-all').addEventListener('click', () => { selected = new Set(SP.columns); renderCols(); preview(); });
+  $('#s-none').addEventListener('click', () => { selected = new Set(); renderCols(); preview(); });
+
+  $('#s-save').addEventListener('click', async () => {
+    const btn = $('#s-save'), msg = $('#s-msg');
+    btn.disabled = true; msg.textContent = 'Enregistrement…';
+    try {
+      const j = await post('save');
+      render(j.preview);
+      msg.textContent = '✓ Split enregistré — le prétraitement sera à réappliquer avec ces choix.';
+    } catch (e) { msg.textContent = e.message; }
+    btn.disabled = xList().length === 0;
+  });
+
+  renderCols(); renderStrats(); renderRatio();
+  render(SP.preview);
+  showPanel((location.hash || '').replace('#sp-', ''));
+})();
+</script>
+{% endif %}
+{% include 'components/fx.html' %}
+</body>
+</html>

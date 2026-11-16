@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ current_phase.title }} — {{ active_dataset }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body class="case-detail-page" data-dataset="{{ active_dataset }}">
+
+  <main class="container" style="max-width: 1100px; padding-top: 2.5rem; padding-bottom: 5rem;">
+
+    <div class="topbar">
+      <a href="{{ url_for('view_dataset', dataset_name=active_dataset) }}" class="btn btn-outline">← Pipeline ML</a>
+      <div class="dataset-pill"><img class="pill-cover" src="{{ url_for('dataset_cover', name=active_dataset) }}" alt=""><span>Dataset : <strong>{{ active_dataset }}</strong></span></div>
+    </div>
+
+    {% set active_pipeline_phase = current_phase.id %}
+    {% set compact_nav = true %}
+    {% include 'components/pipeline_nav.html' %}
+
+    <section class="section-card empty-phase" style="text-align: center;">
+      <div class="empty-phase-icon">{{ current_phase.icon }}</div>
+      <span class="road-badge" style="--rc: 129 140 248;">{{ current_phase.status_label }}</span>
+      <h1 style="margin-top:.8rem;">{{ current_phase.full_title or current_phase.title }}</h1>
+      <p style="max-width:62ch; margin-left:auto; margin-right:auto; color: var(--text-secondary);">{{ current_phase.subtitle }}</p>
+      <div class="road-pills" style="justify-content:center; margin-bottom:2rem;">{% for t in current_phase.pills %}<span>{{ t }}</span>{% endfor %}</div>
+
+      <!-- Flux automatique de données (Preprocessed -> Downstream) -->
+      <div class="data-flow-card" style="max-width: 680px; margin: 0 auto 2rem; text-align: left; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 1.4rem 1.6rem; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+        {% if is_clean %}
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(52, 211, 153, 0.15); color: #34d399; font-size: 1rem;">✓</span>
+              <strong style="color: #34d399; font-size: 1rem;">Données prétraitées injectées automatiquement</strong>
+            </div>
+            <span style="font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 999px; background: rgba(52, 211, 153, 0.12); color: #34d399; font-weight: 600; border: 1px solid rgba(52, 211, 153, 0.3);">Pipeline Connecté</span>
+          </div>
+
+          <p style="font-size: 0.88rem; color: var(--text-secondary); margin: 0 0 1rem;">
+            Le dataset propre est chargé directement depuis la mémoire du pipeline sans avoir besoin de télécharger ni réimporter manuellement un fichier CSV.
+          </p>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem;">
+            <div style="background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 0.6rem 0.8rem;">
+              <small style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Lignes propres</small>
+              <div style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); font-variant-numeric: tabular-nums;">{{ "{:,}".format(pipe_info.n_rows) if pipe_info.n_rows else "—" }}</div>
+            </div>
+            <div style="background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 0.6rem 0.8rem;">
+              <small style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Colonnes actives</small>
+              <div style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); font-variant-numeric: tabular-nums;">{{ pipe_info.n_cols if pipe_info.n_cols else "—" }}</div>
+            </div>
+            {% if pipe_info.target %}
+            <div style="background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 0.6rem 0.8rem;">
+              <small style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Variable cible 🎯</small>
+              <div style="font-size: 1.05rem; font-weight: 600; color: #2563eb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ pipe_info.target }}</div>
+            </div>
+            {% endif %}
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <a href="{{ url_for('view_phase_detail', dataset_name=active_dataset, phase_name='preprocessing') }}" class="btn btn-outline" style="font-size: 0.85rem; padding: 0.45rem 0.9rem;">⚙️ Ajuster le prétraitement</a>
+          </div>
+        {% else %}
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-size: 1rem;">ℹ</span>
+              <strong style="color: #fbbf24; font-size: 1rem;">Données brutes détectées (Non prétraitées)</strong>
+            </div>
+            <span style="font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 999px; background: rgba(251, 191, 36, 0.12); color: #fbbf24; font-weight: 600; border: 1px solid rgba(251, 191, 36, 0.3);">Étape 02 recommandée</span>
+          </div>
+
+          <p style="font-size: 0.88rem; color: var(--text-secondary); margin: 0 0 1rem;">
+            Ce dataset n'a pas encore été prétraité. Il est conseillé de nettoyer les valeurs manquantes, traiter les outliers et gérer les encodages pour de meilleurs résultats.
+          </p>
+
+          <a href="{{ url_for('view_phase_detail', dataset_name=active_dataset, phase_name='preprocessing') }}" class="btn btn-primary" style="font-size: 0.85rem; padding: 0.45rem 1rem;">Nettoyer le dataset (Étape 02) ➔</a>
+        {% endif %}
+      </div>
+
+      <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+        <a href="{{ url_for('view_dataset', dataset_name=active_dataset) }}" class="btn btn-outline">← Vue d'ensemble du pipeline</a>
+        <a href="{{ url_for('view_case_detail', dataset_name=active_dataset, case_name='descriptive') }}" class="btn btn-outline">🔍 Revoir l'EDA</a>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% include 'components/fx.html' %}
+</body>
+</html>

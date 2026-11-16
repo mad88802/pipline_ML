@@ -1,0 +1,32 @@
+{# Pipeline stepper — expects: active_dataset, active_pipeline_phase, compact_nav #}
+{% set steps = [
+  ('eda',                 '01', 'EDA',                url_for('view_case_detail', dataset_name=active_dataset, case_name='descriptive'),
+     '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
+  ('preprocessing',       '02', 'Preprocessing',      url_for('view_phase_detail', dataset_name=active_dataset, phase_name='preprocessing'),
+     '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>'),
+  ('split',               '03', 'Train / Test Split', url_for('view_phase_detail', dataset_name=active_dataset, phase_name='split'),
+     '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/>'),
+  ('model',               '04', 'Model Selection',    url_for('view_phase_detail', dataset_name=active_dataset, phase_name='model'),
+     '<rect x="6" y="6" width="12" height="12" rx="2"/><rect x="10" y="10" width="4" height="4" rx="1"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/>'),
+] %}
+<div class="cycle-pipeline-wrapper {% if compact_nav %}compact{% endif %}">
+  <nav class="pipeline-stepper" aria-label="Étapes du pipeline ML">
+    {% for key, num, label, href, icon in steps %}
+      <a href="{{ href }}" class="pstep {% if active_pipeline_phase == key %}active{% endif %}"
+         {% if active_pipeline_phase == key %}aria-current="step"{% endif %} title="{{ label }}">
+        <span class="pstep-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon|safe }}</svg>
+        </span>
+        <span class="pstep-index">{{ num }}</span>
+        <span class="pstep-label">{{ label }}</span>
+      </a>
+      {% if not loop.last %}
+        <span class="pstep-separator" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </span>
+      {% endif %}
+    {% endfor %}
+  </nav>
+</div>

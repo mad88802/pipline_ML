@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Choose Dataset — ML Pipeline Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body class="choose-dataset-page">
+
+  <main class="page1-container">
+
+    {% set max_rows = [datasets_meta|map(attribute='n_rows')|max, 1]|max %}
+    {% set types = datasets_meta|map(attribute='dataset_type')|unique|list %}
+
+    <header class="hub-hero">
+      <h1 class="hub-title">Choisissez un dataset</h1>
+    </header>
+
+    <section class="dataset-hub-section">
+      <div class="dataset-cards-grid" id="hub-grid">
+        {% for d in datasets_meta %}
+          <a class="dataset-card {% if d.name == default_dataset %}active{% endif %}" href="{{ url_for('view_dataset', dataset_name=d.name) }}"
+             data-name="{{ d.name|lower }}" data-type="{{ d.dataset_type }}" data-rows="{{ d.n_rows or 0 }}" data-cols="{{ d.n_columns or 0 }}">
+            <div class="dataset-cover">
+              <img src="{{ url_for('dataset_cover', name=d.name) }}?v={{ d.cover_v }}" alt="" loading="lazy" draggable="false">
+              <div class="cover-actions">
+                <button type="button" class="cover-btn cover-edit" data-name="{{ d.name }}" title="Changer l'image" aria-label="Changer l'image de {{ d.name }}">📷</button>
+                <button type="button" class="cover-btn cover-reset" data-name="{{ d.name }}" title="Revenir à l'image automatique" aria-label="Image automatique" {% if not d.has_custom_cover %}hidden{% endif %}>↺</button>
+              </div>
+            </div>
+            <div class="dataset-card-top">
+              <div class="dataset-card-info">
+                <h4 class="dataset-name" title="{{ d.name }}">{{ d.name }}</h4>
+                <span class="dataset-type-badge">{{ d.dataset_type|replace("_"," ")|capitalize }}</span>
+              </div>
+              {% if d.name == default_dataset %}<span class="active-check-badge">✓ Actif</span>{% endif %}
+            </div>
+
+            <div class="dataset-card-stats">
+              <div class="d-stat">
+                <span class="d-stat-label">Lignes</span>
+                <span class="d-stat-val">{{ "{:,}".format(d.n_rows) if d.n_rows else "—" }}</span>
+              </div>
+              <div class="d-stat">
+                <span class="d-stat-label">Colonnes</span>
+                <span class="d-stat-val">{{ d.n_columns if d.n_columns else "—" }}</span>
+              </div>
+            </div>
+
+            <div class="size-bar" title="Volume relatif de lignes"><span style="width: {{ ((d.n_rows or 0) / max_rows * 100)|round(1) }}%"></span></div>
+
+            <div class="dataset-card-hover-action"><span>Entrer dans le pipeline ➔</span></div>
+            <button type="button" class="dataset-delete" data-name="{{ d.name }}" title="Supprimer ce dataset" aria-label="Supprimer {{ d.name }}">🗑</button>
+          </a>
+        {% endfor %}
+
+        <a class="dataset-card upload-card" href="{{ url_for('upload_page') }}">
+          <div class="upload-card-content">
+            <div class="upload-icon">＋</div>
+            <div class="upload-title">Nouveau dataset</div>
+            <div class="upload-sub">Importer un CSV ou relancer</div>
+          </div>
+        </a>
+      </div>
+      <p id="hub-empty" class="hub-empty" hidden>Aucun dataset ne correspond.</p>
+    </section>
+  </main>
+
+  <!-- Image personnalisée d'un dataset -->
+  <input type="file" id="coverInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+  <script>
+  (function () {
+    var grid = document.getElementById("hub-grid"), input = document.getElementById("coverInput");
+    if (!grid || !input) return;
+    var target = null;
+    function setImg(card, v) {
+      var img = card.querySelector(".dataset-cover img"), url = img.getAttribute("src").split("?")[0];
+      img.src = url + "?v=" + v;
+    }
+    grid.addEventListener("click", function (ev) {
+      var edit = ev.target.closest(".cover-edit"), reset = ev.target.closest(".cover-reset");
+      if (!edit && !reset) return;
+      ev.preventDefault(); ev.stopPropagation();
+      var btn = edit || reset, name = btn.getAttribute("data-name"), card = btn.closest(".dataset-card");
+      if (edit) { target = { name: name, card: card }; input.value = ""; input.click(); return; }
+      fetch("/api/dataset-cover/" + encodeURIComponent(name), { method: "DELETE" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d.status === "ok") { setImg(card, Date.now()); card.querySelector(".cover-reset").hidden = true; } })
+        .catch(function () { window.alert("Serveur injoignable"); });
+    });
+    input.addEventListener("change", function () {
+      var f = input.files && input.files[0]; if (!f || !target) return;
+      var t = target, fd = new FormData(); fd.append("file", f);
+      t.card.classList.add("cover-busy");
+      fetch("/api/dataset-cover/" + encodeURIComponent(t.name), { method: "POST", body: fd })
+        .then(function (r) { return r.json().catch(function () { return { status: "error", message: "Réponse invalide" }; }); })
+        .then(function (d) {
+          t.card.classList.remove("cover-busy");
+          if (d.status !== "ok") { window.alert(d.message || "Envoi impossible"); return; }
+          setImg(t.card, d.v || Date.now()); t.card.querySelector(".cover-reset").hidden = false;
+        })
+        .catch(function () { t.card.classList.remove("cover-busy"); window.alert("Serveur injoignable"); });
+    });
+  })();
+  </script>
+
+  <!-- Suppression d'un dataset -->
+  <script>
+  (function () {
+    var grid = document.getElementById("hub-grid");
+    if (!grid) return;
+    grid.addEventListener("click", function (ev) {
+      var btn = ev.target.closest(".dataset-delete");
+      if (!btn) return;
+      ev.preventDefault(); ev.stopPropagation();                 // la carte est un lien : on ne l'ouvre pas
+      var name = btn.getAttribute("data-name"), card = btn.closest(".dataset-card");
+      if (!window.confirm("Supprimer le dataset « " + name + " » ?\n\nL'analyse, les graphiques et les rapports PDF seront effacés. " +
+                          "Le fichier d'origine (CSV/Excel) n'est pas supprimé.")) return;
+      btn.disabled = true; btn.textContent = "…";
+      fetch("/api/dataset/" + encodeURIComponent(name), { method: "DELETE" })
+        .then(function (r) { return r.json().catch(function () { return { status: "error", message: "Réponse invalide du serveur" }; }); })
+        .then(function (d) {
+          if (d.status !== "ok") { window.alert(d.message || "Suppression impossible"); btn.disabled = false; btn.textContent = "🗑"; return; }
+          try { sessionStorage.removeItem("mls.agent." + name); } catch (e) {}
+          var wasActive = card.classList.contains("active");
+          card.classList.add("is-removing");
+          setTimeout(function () {
+            card.remove();
+            if (wasActive || !d.remaining.length) window.location.reload();   // le dataset « actif » change / plus aucun dataset
+          }, 250);
+        })
+        .catch(function () { window.alert("Serveur injoignable"); btn.disabled = false; btn.textContent = "🗑"; });
+    });
+  })();
+  </script>
+
+  <!-- Scripts -->
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% include 'components/fx.html' %}
+</body>
+</html>

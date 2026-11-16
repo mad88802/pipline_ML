@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>No Dataset Available — MeteoScope</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+</head>
+<body>
+  <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2rem;">
+    <div class="section-card" style="max-width: 500px; padding: 2.5rem;">
+      <div style="font-size: 3rem; margin-bottom: 1rem;">🌤️</div>
+      <h2 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">No Results Found</h2>
+      <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.95rem;">
+        No analyzed datasets were found in the <code>results/</code> directory. Please run the analysis on <code>weatherHistory.csv</code> to view results.
+      </p>
+      <form action="/api/run-analysis" method="POST">
+        <input type="hidden" name="dataset_name" value="weatherHistory">
+        <input type="hidden" name="target_class" value="Precip Type">
+        <input type="hidden" name="date_column" value="Formatted Date">
+        <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+          ⚡ Run Analysis on weatherHistory.csv
+        </button>
+      </form>
+    </div>
+  </div>
+  {% include 'components/fx.html' %}
+</body>
+</html>

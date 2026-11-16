@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ current_phase.title }} — {{ active_dataset }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+  <style>
+    .fe-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.2rem 0}
+    .fe-grid label{display:flex;flex-direction:column;gap:.35rem;font-size:.82rem;color:var(--text-secondary)}
+    .fe-grid select,.fe-grid input[type=number]{padding:.5rem .6rem;border-radius:10px;border:1px solid var(--border-subtle);background:var(--bg-input);color:var(--text-main)}
+    .fe-check{flex-direction:row!important;align-items:center;gap:.5rem!important}
+    .fe-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin:1rem 0}
+    .fe-stat{background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:10px;padding:.6rem .8rem}
+    .fe-stat small{color:var(--text-muted);font-size:.72rem}
+    .fe-stat b{display:block;font-size:1.15rem;font-variant-numeric:tabular-nums}
+    .fe-step{padding:.6rem 0;border-top:1px solid var(--border-subtle)}
+    .fe-chip{display:inline-block;margin:.15rem .25rem .15rem 0;padding:.1rem .55rem;border-radius:999px;font-size:.75rem;border:1px solid var(--border-subtle)}
+    .fe-chip.add{color:#34d399}.fe-chip.del{color:#f87171;text-decoration:line-through}
+    .fe-bar{height:6px;border-radius:3px;background:var(--border-subtle);overflow:hidden}
+    .fe-bar i{display:block;height:100%;background:#fbbf24}
+    .fe-score{display:grid;grid-template-columns:minmax(120px,220px) 1fr 70px;gap:.6rem;align-items:center;font-size:.8rem;padding:.2rem 0}
+    .fe-score.off{opacity:.45}
+  </style>
+</head>
+<body class="case-detail-page" data-dataset="{{ active_dataset }}">
+<main class="container" style="max-width:1100px;padding-top:2.5rem;padding-bottom:5rem;">
+
+  <div class="topbar">
+    <a href="{{ url_for('view_dataset', dataset_name=active_dataset) }}" class="btn btn-outline">← Pipeline ML</a>
+    <div class="dataset-pill"><img class="pill-cover" src="{{ url_for('dataset_cover', name=active_dataset) }}" alt=""><span>Dataset : <strong>{{ active_dataset }}</strong></span></div>
+  </div>
+
+  {% set active_pipeline_phase = current_phase.id %}
+  {% set compact_nav = true %}
+  {% include 'components/pipeline_nav.html' %}
+
+  <section class="section-card">
+    <h1>{{ current_phase.full_title or current_phase.title }}</h1>
+    {% if error %}
+      <p style="color:#f87171">{{ error }}</p>
+    {% else %}
+      <p style="color:var(--text-secondary);margin:.3rem 0">
+        {% if fe.is_clean %}✓ Données prétraitées chargées directement depuis la base — {{ "{:,}".format(fe.n_rows) }} lignes · {{ fe.n_cols }} colonnes
+        {% else %}ℹ Pas de prétraitement : les données brutes sont utilisées. <a href="{{ url_for('view_phase_detail', dataset_name=active_dataset, phase_name='preprocessing') }}">Nettoyer d'abord ➔</a>{% endif %}
+      </p>
+
+      <div class="fe-grid">
+        <label>Variable cible (étape 04)
+          <input type="text" value="{{ fe.target or 'non définie' }}" disabled>
+          <input type="hidden" id="f-target" value="{{ fe.target or '' }}">
+        </label>
+        <label>Mise à l'échelle
+          <select id="f-scaling">{% for s in fe.choices.scaling %}<option value="{{ s }}" {{ 'selected' if s == fe.defaults.scaling }}>{{ s }}</option>{% endfor %}</select>
+        </label>
+        <label>Sélection
+          <select id="f-selection">{% for s in fe.choices.selection %}<option value="{{ s }}" {{ 'selected' if s == fe.defaults.selection }}>{{ s }}</option>{% endfor %}</select>
+        </label>
+        <label>Garder top-k (0 = tout)
+          <input type="number" id="f-k" min="0" value="{{ fe.defaults.select_k }}">
+        </label>
+        <label>Corrélation max (0 = off)
+          <input type="number" id="f-corr" min="0" max="1" step="0.01" value="{{ fe.defaults.corr_threshold }}">
+        </label>
+        <label>Split train / test (étape 04)
+          <input type="text" value="{% if fe.split_cfg %}{{ (fe.split_cfg.test_size * 100) | round | int }} % de test{% else %}hérité du prétraitement{% endif %}" disabled>
+          <a href="{{ url_for('view_phase_detail', dataset_name=active_dataset, phase_name='split') }}">Modifier ➔</a>
+        </label>
+        {% if fe.is_ts %}
+        <label>Lags (jours/pas passés)
+          <input type="text" id="f-lags" value="{{ fe.defaults.lags | join(', ') }}" placeholder="1, 2, 3">
+        </label>
+        <label>Rolling (fenêtres)
+          <input type="text" id="f-roll" value="{{ fe.defaults.rolling | join(', ') }}" placeholder="3, 24">
+        </label>
+        {% endif %}
+        <label class="fe-check"><input type="checkbox" id="f-date" checked> Features de calendrier</label>
+      </div>
+
+      <button class="btn btn-primary" id="fe-run">Lancer le feature engineering</button>
+      <span id="fe-msg" style="margin-left:.8rem;color:var(--text-muted);font-size:.85rem"></span>
+    {% endif %}
+  </section>
+
+  <section class="section-card" id="fe-result" style="display:none"></section>
+
+</main>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+(function () {
+  const ds = document.body.dataset.dataset;
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const chips = (l, cls) => (l || []).slice(0, 14).map(x => `<span class="fe-chip ${cls}">${esc(x)}</span>`).join('')
+    + ((l || []).length > 14 ? `<span class="fe-chip">+${l.length - 14}</span>` : '');
+
+  function render(r) {
+    const max = Math.max(...r.scores.map(s => s.score), 1e-9);
+    $('#fe-result').style.display = '';
+    $('#fe-result').innerHTML = `
+      <h2>Résultat</h2>
+      <div class="fe-stats">
+        <div class="fe-stat"><small>Features finales</small><b>${r.after.features.length}</b></div>
+        <div class="fe-stat"><small>Train / Test</small><b>${r.split.train} / ${r.split.test}</b></div>
+        <div class="fe-stat"><small>Split</small><b>${esc(r.split.mode)}</b></div>
+        <div class="fe-stat"><small>Tâche</small><b>${esc(r.task)}</b></div>
+        <div class="fe-stat"><small>Cible 🎯</small><b>${esc(r.target)}</b></div>
+        <div class="fe-stat"><small>Scaling</small><b>${esc(r.scaler.method)}</b></div>
+      </div>
+      ${r.steps.map(s => `<div class="fe-step"><strong>${esc(s.label)}</strong><br>${chips(s.added, 'add')}${chips(s.dropped, 'del')}</div>`).join('')}
+      <h3 style="margin-top:1.2rem">Importance (train)</h3>
+      ${r.scores.slice(0, 25).map(s => `<div class="fe-score ${s.kept ? '' : 'off'}"><span>${esc(s.feature)}</span>
+        <div class="fe-bar"><i style="width:${(100 * s.score / max).toFixed(1)}%"></i></div><span>${s.score}</span></div>`).join('')}
+      <p style="color:var(--text-muted);font-size:.8rem;margin-top:1rem">Sauvegardé dans la base — l'étape Modèle le relira directement.</p>`;
+  }
+
+  async function run() {
+    const btn = $('#fe-run'), msg = $('#fe-msg');
+    btn.disabled = true; msg.textContent = 'Calcul…';
+    try {
+      const res = await fetch(`/api/feature-engineering/${encodeURIComponent(ds)}/run`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          target: $('#f-target').value, scaling: $('#f-scaling').value, selection: $('#f-selection').value,
+          select_k: $('#f-k').value, corr_threshold: $('#f-corr').value, test_size: $('#f-test') ? $('#f-test').value : undefined,
+          lags: $('#f-lags') ? $('#f-lags').value : undefined, rolling: $('#f-roll') ? $('#f-roll').value : undefined,
+          date_features: $('#f-date').checked,
+        }),
+      });
+      const j = await res.json();
+      if (j.status !== 'ok') throw new Error(j.message || 'Erreur');
+      msg.textContent = '✓ Terminé'; render(j.report);
+    } catch (e) { msg.textContent = e.message; }
+    btn.disabled = false;
+  }
+
+  const b = $('#fe-run'); if (b) b.addEventListener('click', run);
+  const existing = {{ (fe.report or none) | tojson }};
+  if (existing) render(existing);
+})();
+</script>
+{% include 'components/fx.html' %}
+</body>
+</html>

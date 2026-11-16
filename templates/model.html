@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ current_phase.title }} — {{ active_dataset }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  <style>
+    .mh-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin:1.4rem 0 .4rem}
+    .mh-stat{background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg,14px);padding:.9rem 1.1rem;box-shadow:var(--shadow-card)}
+    .mh-stat small{color:var(--text-muted);font-size:.72rem}
+    .mh-stat b{display:block;font-size:1.15rem;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .mh-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.2rem;margin-top:1.6rem}
+    .mh-card{position:relative;display:flex;flex-direction:column;gap:.7rem;padding:1.6rem 1.7rem;background:var(--bg-card);border:1.5px solid var(--border-subtle);border-radius:18px;box-shadow:var(--shadow-card);text-decoration:none;color:inherit;transition:border-color .2s,box-shadow .2s,transform .2s}
+    a.mh-card:hover{border-color:rgb(var(--ac-1));box-shadow:0 0 0 3px rgb(var(--ac-1) / .15);transform:translateY(-2px)}
+    .mh-card.dis{opacity:.55;cursor:not-allowed}
+    .mh-ico{width:48px;height:48px;display:grid;place-items:center;font-size:1.5rem;border-radius:14px;background:linear-gradient(135deg,rgb(var(--ac-1)),rgb(var(--ac-3)));color:#fff}
+    .mh-card h2{margin:.2rem 0 0;font-size:1.35rem}
+    .mh-card p{margin:0;color:var(--text-secondary);font-size:.88rem;line-height:1.5}
+    .mh-pills{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.2rem}
+    .mh-pills span{font-size:.72rem;padding:.2rem .65rem;border-radius:999px;background:rgb(var(--ac-2) / .12);border:1px solid rgb(var(--ac-2) / .3)}
+    .mh-rec{align-self:flex-start;font-size:.66rem;font-weight:700;padding:.1rem .5rem;border-radius:999px;color:#047857;background:rgb(16 185 129 / .14)}
+    .mh-done{font-size:.78rem;color:#34d399}
+    .mh-go{margin-top:auto;font-weight:700;font-size:.9rem;color:rgb(var(--ac-1))}
+    .mh-target{margin-top:1.4rem;padding:1.3rem 1.5rem;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:18px;box-shadow:var(--shadow-card)}
+    .mh-target h2{margin:0 0 .8rem;font-size:1.05rem}
+    .mh-target h2 b{color:rgb(var(--ac-1))}
+    .mh-tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem}
+    .mh-tgrid div{background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:10px;padding:.5rem .8rem}
+    .mh-tgrid small{display:block;color:var(--text-muted);font-size:.7rem}
+    .mh-tgrid b{font-size:.95rem;font-variant-numeric:tabular-nums}
+    .mh-vals{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.8rem}
+    .mh-vals span{font-size:.74rem;padding:.2rem .65rem;border-radius:999px;background:rgb(var(--ac-2) / .12);border:1px solid rgb(var(--ac-2) / .3)}
+    .mh-why{margin-top:.9rem;font-size:.86rem;color:var(--text-secondary);line-height:1.5}
+    .mh-reason{font-size:.8rem;color:var(--text-secondary);line-height:1.45;margin:0}
+    .mh-warn{margin:.8rem 0 0;padding:.55rem .8rem;font-size:.82rem;color:#b45309;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:10px}
+  </style>
+</head>
+<body class="case-detail-page" data-dataset="{{ active_dataset }}">
+<main class="container" style="max-width:1100px;padding-top:2.5rem;padding-bottom:5rem;">
+
+  <div class="topbar">
+    <a href="{{ url_for('view_dataset', dataset_name=active_dataset) }}" class="btn btn-outline">← Pipeline ML</a>
+    <div class="dataset-pill"><img class="pill-cover" src="{{ url_for('dataset_cover', name=active_dataset) }}" alt=""><span>Dataset : <strong>{{ active_dataset }}</strong></span></div>
+  </div>
+
+  <h1 style="font-size:1.85rem;margin:1.5rem 0 0">{{ current_phase.full_title or current_phase.title }}</h1>
+  {% if error %}
+    <section class="section-card" style="margin-top:1.2rem">
+      <p style="color:#f87171">{{ error }}</p>
+      <p><a class="btn btn-outline" href="{{ url_for('view_phase_detail', dataset_name=active_dataset, phase_name='split') }}">← Étape Split</a></p>
+    </section>
+  {% else %}
+      {% if not mp.task_ok.regression and not mp.task_ok.classification %}
+        <p class="mh-warn">La cible « {{ mp.target }} » ne convient ni à la régression ni à la classification. Changez la variable cible dans l'étape Split.</p>
+      {% endif %}
+
+      {% set ti = mp.target_info %}
+      <section class="mh-target">
+        <h2>🎯 Variable cible choisie : <b>{{ ti.name }}</b></h2>
+        <div class="mh-tgrid">
+          <div><small>Type</small><b>{{ ti.kind }}</b></div>
+          <div><small>Valeurs distinctes</small><b>{{ ti.n_unique }}</b></div>
+          {% if ti.stats %}
+          <div><small>Min → Max</small><b>{{ ti.stats.min }} → {{ ti.stats.max }}</b></div>
+          <div><small>Moyenne</small><b>{{ ti.stats.mean }}</b></div>
+          {% endif %}
+          <div><small>Valeurs manquantes</small><b>{{ ti.n_missing }}</b></div>
+          <div><small>Lignes train / test</small><b>{{ mp.n_train }} / {{ mp.n_test }}</b></div>
+        </div>
+        <div class="mh-vals">
+          {% for v in ti.top_values %}<span>{{ v.label }} · {{ v.n }}</span>{% endfor %}
+          {% if ti.n_unique > ti.top_values|length %}<span>… +{{ ti.n_unique - ti.top_values|length }}</span>{% endif %}
+        </div>
+      </section>
+
+      {% set defs = [
+        ('regression', '📈', 'Régression'),
+        ('classification', '🏷️', 'Classification')
+      ] %}
+      <div class="mh-cards">
+        {% for tid, ico, title in defs %}
+          {% set ok = mp.task_ok[tid] %}
+          {% set done = mp.saved[tid] %}
+          <{{ 'a' if ok else 'div' }} class="mh-card {{ '' if ok else 'dis' }}" {% if ok %}href="{{ url_for('view_model_task', dataset_name=active_dataset, task=tid) }}"{% endif %}>
+            <div class="mh-ico">{{ ico }}</div>
+            <h2>{{ title }}</h2>
+            {% if mp.recommended == tid %}<span class="mh-rec">Recommandé</span>{% endif %}
+            {% if not ok %}<span class="mh-done" style="color:var(--text-muted)">Indisponible</span>
+            {% elif done %}<span class="mh-done">✓ Déjà entraîné</span>{% endif %}
+          </{{ 'a' if ok else 'div' }}>
+        {% endfor %}
+      </div>
+  {% endif %}
+</main>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% include 'components/fx.html' %}
+</body>
+</html>

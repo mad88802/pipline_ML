@@ -1,0 +1,234 @@
+{% macro pp_icon(key) -%}<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{% if key == "overview" %}<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>{% elif key == "dups" %}<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>{% elif key == "useless" %}<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6"/>{% elif key == "missing" %}<circle cx="12" cy="12" r="8" stroke-dasharray="3 3"/><path d="M12 8v4M12 16h.01"/>{% elif key == "outliers" %}<circle cx="7" cy="16" r="1.6"/><circle cx="11" cy="13" r="1.6"/><circle cx="14.5" cy="15" r="1.6"/><circle cx="9" cy="18.5" r="1.6"/><circle cx="18.5" cy="5.5" r="2"/><path d="M3 21h18M3 21V3"/>{% elif key == "noise" %}<path d="M2 12h2.5l2-6 3 12 3-14 3 10 2-4H22"/>{% elif key == "scaling" %}<path d="M4 20 20 4M14 4h6v6M10 20H4v-6"/>{% elif key == "balance" %}<path d="M12 3v18M5 21h14M6 7h12M6 7l-3 7a3 3 0 0 0 6 0L6 7zM18 7l-3 7a3 3 0 0 0 6 0l-3-7z"/>{% elif key == "encoding" %}<path d="m8 8-5 4 5 4M16 8l5 4-5 4M14 5l-4 14"/>{% else %}<path d="M5 12l5 5L20 7"/>{% endif %}</svg>{%- endmacro %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prétraitement — {{ active_dataset }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body class="case-detail-page eda-page pp-page" data-dataset="{{ active_dataset }}" style="margin: 0; padding: 0;">
+
+  <div style="max-width: 1400px; margin: 1.5rem auto 0; padding: 0 1.5rem;">
+    <div class="topbar" style="margin-bottom: 1.25rem;">
+      <a href="{{ url_for('view_dataset', dataset_name=active_dataset) }}" class="btn btn-outline">← Pipeline ML</a>
+      <div class="dataset-pill"><img class="pill-cover" src="{{ url_for('dataset_cover', name=active_dataset) }}" alt=""><span>Dataset : <strong>{{ active_dataset }}</strong></span></div>
+    </div>
+  </div>
+
+  <div class="eda-page-wrapper">
+  {% if error %}
+    <section class="section-card empty-phase">
+      <div class="empty-phase-icon">⚠️</div>
+      <h1 style="margin-top:.8rem;">Données illisibles</h1>
+      <p style="max-width:62ch; margin-left:auto; margin-right:auto;">{{ error }}</p>
+      <a href="{{ url_for('upload_page') }}" class="btn btn-primary">Réimporter le fichier</a>
+    </section>
+  {% else %}
+    <div class="eda-layout">
+
+      <!-- ============ LEFT SIDEBAR : étapes du prétraitement ============ -->
+      <aside class="eda-sidebar">
+        <div class="eda-sidebar-section-title"><span>Étapes de prétraitement</span><span class="eda-sidebar-step-badge">9</span></div>
+
+        <nav class="eda-nav-list" id="ppNav">
+          {% set items = [('overview','Aperçu','',''),('dups','Doublons','','chipDup'),('useless','Colonnes inutiles','','chipUse'),('missing','Valeurs manquantes','KNN','chipMiss'),('outliers','Outliers','One-Class SVM','chipOut'),('noise','Bruit','Moyenne mobile',''),('encoding','Encodage','Target Encoding','chipEnc'),('scaling','Feature Scaling','Standardisation','chipScale'),('balance','Déséquilibre des classes','SMOTE','chipBal')] %}
+          {% for key, label, sub, chip in items %}
+          <a href="#pp-{{ key }}" class="eda-nav-item {% if loop.first %}active{% endif %}" data-panel="{{ key }}" {% if chip %}data-chip="{{ chip }}"{% endif %}>
+            <span class="eda-nav-icon">{{ pp_icon(key) }}</span>
+            <div class="eda-nav-text"><span class="eda-nav-title">{{ label }}</span>{% if sub %}<small class="pp-nav-sub">{{ sub }}</small>{% endif %}</div>
+            <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+          </a>
+          {% endfor %}
+          <a href="#pp-result" class="eda-nav-item pp-nav-result" data-panel="result" id="navResult">
+            <span class="eda-nav-icon">{{ pp_icon('result') }}</span>
+            <div class="eda-nav-text"><span class="eda-nav-title">Résultat final</span><small class="pp-nav-sub">Dataset prétraité</small></div>
+            <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+          </a>
+        </nav>
+
+        <!-- valeurs issues de l'étape Split, utilisées en interne (non affichées) -->
+        {% set _sp = profile.split %}
+        <input type="hidden" id="optTest" value="{{ ((_sp.test_size if _sp else 0.2) * 100) | round | int }}">
+        <input type="hidden" id="optTarget" value="{{ (_sp.target if _sp else profile.target) or '' }}">
+      </aside>
+
+      <!-- ============ RIGHT : un panneau à la fois ============ -->
+      <main class="eda-main-content">
+        <div class="eda-content-header" style="margin-bottom: 1.5rem; padding-bottom: 0.75rem;">
+          <div><h1 class="eda-content-title" id="ppTitle" style="font-size: 1.85rem;">Aperçu</h1></div>
+        </div>
+
+        <!-- Aperçu -->
+        <section class="pp-panel-view" id="pp-overview" data-panel="overview">
+          <div class="pp-kpis" id="ppKpis">
+            <div class="pp-kpi" data-k="rows"><span class="pp-kl">Lignes</span><b class="pp-kv">0</b><small class="pp-kd"></small></div>
+            <div class="pp-kpi" data-k="cols"><span class="pp-kl">Colonnes</span><b class="pp-kv">0</b><small class="pp-kd"></small></div>
+            <div class="pp-kpi" data-k="missing"><span class="pp-kl">Valeurs manquantes</span><b class="pp-kv">0</b><small class="pp-kd"></small></div>
+            <div class="pp-kpi" data-k="dups"><span class="pp-kl">Doublons</span><b class="pp-kv">0</b><small class="pp-kd"></small></div>
+          </div>
+          <div class="section-card pp-cols">
+            <div class="pp-table-wrap" style="margin-top:1rem;"><table class="pp-table" id="ppCols"></table></div>
+            <span class="pp-chip" id="chipCols" hidden></span>
+          </div>
+        </section>
+
+        <!-- Doublons -->
+        <section class="pp-panel-view" id="pp-dups" data-panel="dups" hidden>
+          <div class="section-card">
+            <div class="pp-body pp-row">
+              <span class="pp-chip" id="chipDup"></span>
+              <label class="pp-row" style="gap:.7rem;"><span class="pp-lab">Supprimer les doublons</span>
+                <span class="pp-switch"><input type="checkbox" id="optDup" checked><span></span></span></label>
+            </div>
+          </div>
+          <div class="pp-res" data-res="dups"></div>
+        </section>
+
+        <!-- Colonnes inutiles -->
+        <section class="pp-panel-view" id="pp-useless" data-panel="useless" hidden>
+          <div class="section-card">
+            <div class="pp-body">
+              <div class="pp-row" style="margin-bottom:1rem;">
+                <span class="pp-chip" id="chipUse"></span>
+                <label class="pp-row" style="gap:.7rem;"><span class="pp-lab">Activer</span>
+                  <span class="pp-switch"><input type="checkbox" id="optUseless" checked><span></span></span></label>
+              </div>
+              <div class="pp-row"><span class="pp-lab">Vides au-delà de</span>
+                <div class="pp-range"><input type="range" id="optThr" min="10" max="100" step="5" value="60"><output id="outThr">60 %</output></div></div>
+            </div>
+          </div>
+          <div class="pp-res" data-res="useless"></div>
+        </section>
+
+        <!-- Valeurs manquantes -->
+        <section class="pp-panel-view" id="pp-missing" data-panel="missing" hidden>
+          <div class="section-card">
+            <div class="pp-body">
+              <div class="pp-row" style="margin-bottom:1rem;">
+                <span class="pp-chip" id="chipMiss"></span>
+                <label class="pp-row" style="gap:.7rem;"><span class="pp-lab">Activer l'imputation</span>
+                  <span class="pp-switch"><input type="checkbox" id="optImpute" checked><span></span></span></label>
+              </div>
+            </div>
+          </div>
+          <div class="pp-res" data-res="missing"></div>
+        </section>
+
+        <!-- Outliers -->
+        <section class="pp-panel-view" id="pp-outliers" data-panel="outliers" hidden>
+          <div class="section-card">
+            <div class="pp-body">
+              <div class="pp-row" style="margin-bottom:1rem;">
+                <span class="pp-chip" id="chipOut"></span>
+                <label class="pp-row" style="gap:.7rem;"><span class="pp-lab">Activer le traitement (One-Class SVM)</span>
+                  <span class="pp-switch"><input type="checkbox" id="optCap" checked><span></span></span></label>
+              </div>
+              <label class="pp-field"><span class="pp-lab">ν : part maximale de lignes du train jugées aberrantes (%)</span>
+                <input type="number" id="optNu" min="0.5" max="50" step="0.5" value="5"></label>
+            </div>
+          </div>
+          <div class="pp-res" data-res="outliers"></div>
+        </section>
+
+        <!-- Bruit -->
+        <section class="pp-panel-view" id="pp-noise" data-panel="noise" hidden>
+          <div class="section-card {% if profile.dataset_type != 'time_series' %}pp-off{% endif %}">
+            <div class="pp-body">
+              <label class="pp-field"><span class="pp-lab">Fenêtre de la moyenne mobile (0 = désactivé)</span>
+                <input type="number" id="optWin" min="0" max="365" step="1" value="0" {% if profile.dataset_type != 'time_series' %}disabled{% endif %}></label>
+            </div>
+          </div>
+          <div class="pp-res" data-res="noise"></div>
+        </section>
+
+        <!-- Encodage -->
+        <section class="pp-panel-view" id="pp-encoding" data-panel="encoding" hidden>
+          <div class="section-card">
+            <div class="pp-body">
+              <div class="pp-row" style="margin-bottom:1rem;">
+                <span class="pp-chip" id="chipEnc"></span>
+                <label class="pp-row" style="gap:.7rem;"><span class="pp-lab">Activer le target encoding</span>
+                  <span class="pp-switch"><input type="checkbox" id="optTE" checked><span></span></span></label>
+              </div>
+              <p class="pp-warn" id="teWarn" hidden>⚠️ Aucune variable cible choisie : un encodage par fréquence sera utilisé à la place.</p>
+              <div class="pp-two">
+                <label class="pp-field"><span class="pp-lab">Lissage (poids de la moyenne globale)</span>
+                  <input type="number" id="optTESm" min="0" max="1000" step="1" value="10"></label>
+                <label class="pp-field pp-inline"><span class="pp-lab">Encoder aussi la cible (texte → nombre)</span>
+                  <span class="pp-switch"><input type="checkbox" id="optEncT" checked><span></span></span></label>
+              </div>
+            </div>
+          </div>
+          <div class="pp-res" data-res="encoding"></div>
+        </section>
+
+        <!-- Feature scaling -->
+        <section class="pp-panel-view" id="pp-scaling" data-panel="scaling" hidden>
+          <div class="section-card">
+            <div class="pp-body">
+              <div class="pp-row" style="margin-bottom:1rem;">
+                <span class="pp-chip" id="chipScale"></span>
+                <label class="pp-row" style="gap:.7rem;"><span class="pp-lab">Activer le feature scaling</span>
+                  <span class="pp-switch"><input type="checkbox" id="optScale" checked><span></span></span></label>
+              </div>
+              <label class="pp-field" style="max-width:340px;"><span class="pp-lab">Méthode</span>
+                <select id="optScaleMethod">
+                  <option value="standard">Standard — moyenne 0, écart-type 1</option>
+                  <option value="minmax">MinMax — valeurs entre 0 et 1</option>
+                  <option value="robust">Robust — médiane / IQR (résiste aux outliers)</option>
+                </select></label>
+              <p class="pp-hint" id="scaleHint"></p>
+            </div>
+          </div>
+          <div class="pp-res" data-res="scaling"></div>
+        </section>
+
+        <!-- Déséquilibre des classes -->
+        <section class="pp-panel-view" id="pp-balance" data-panel="balance" hidden>
+          <div class="section-card">
+            <div class="pp-body">
+              <div class="pp-row" style="margin-bottom:1rem;">
+                <span class="pp-chip" id="chipBal"></span>
+                <label class="pp-row" style="gap:.7rem;"><span class="pp-lab">Activer SMOTE</span>
+                  <span class="pp-switch"><input type="checkbox" id="optBal"><span></span></span></label>
+              </div>
+              <p class="pp-warn" id="balWarn" hidden></p>
+              <div id="classBars" class="pp-classes"></div>
+              <label class="pp-field" style="max-width:260px; margin-top:1rem;"><span class="pp-lab">Nombre de voisins (k)</span>
+                <input type="number" id="optSmK" min="1" max="15" step="1" value="5"></label>
+              <p class="pp-hint">À utiliser sur l'ensemble d'entraînement : appliquer SMOTE avant de séparer train/test fausserait l'évaluation.</p>
+            </div>
+          </div>
+          <div class="pp-res" data-res="balance"></div>
+        </section>
+
+        <!-- Résultat final : récapitulatif des choix + bouton Appliquer -->
+        <section class="pp-panel-view pp-result" id="ppResult" data-panel="result" hidden>
+          <div class="section-card pp-final">
+            <ul class="pp-recap" id="ppRecap"></ul>
+            <div class="pp-apply">
+              <div class="pp-apply-state" id="ppApplyState" aria-live="polite"></div>
+              <div class="pp-apply-actions">
+                <button type="button" class="btn btn-primary" id="btnApply">Appliquer ce prétraitement</button>
+                <a class="btn btn-outline" id="btnNext" href="{{ url_for('view_phase_detail', dataset_name=active_dataset, phase_name='split') }}" hidden>Passer au Split Train / Test ➔</a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  {% endif %}
+  </div>
+
+  {% if profile %}
+  <script>window.__PP__ = {{ {"dataset": active_dataset, "profile": profile}|tojson }};</script>
+  <script src="{{ url_for('static', filename='js/plotly.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/preprocessing.js') }}"></script>
+  {% endif %}
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% include 'components/fx.html' %}
+</body>
+</html>

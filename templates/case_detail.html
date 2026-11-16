@@ -1,0 +1,1243 @@
+{% macro eda_icon(key) -%}<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{% if key == "descriptive" %}<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>{% elif key == "quality" %}<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>{% elif key == "noise" %}<path d="M2 12h2.5l2-6 3 12 3-14 3 10 2-4H22"/>{% elif key == "outliers" %}<circle cx="7" cy="16" r="1.6"/><circle cx="11" cy="13" r="1.6"/><circle cx="14.5" cy="15" r="1.6"/><circle cx="9" cy="18.5" r="1.6"/><circle cx="18.5" cy="5.5" r="2"/><path d="M3 21h18M3 21V3"/>{% elif key == "distribution" %}<path d="M3 21h18"/><rect x="4.5" y="13" width="3.2" height="8" rx=".6"/><rect x="10.4" y="5" width="3.2" height="16" rx=".6"/><rect x="16.3" y="10" width="3.2" height="11" rx=".6"/>{% elif key == "feature-importance" %}<path d="M4 6h10M4 12h14M4 18h7"/><circle cx="17" cy="6" r="2"/><circle cx="14" cy="18" r="2"/>{% else %}<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>{% endif %}</svg>{%- endmacro %}
+{% macro gauge(health, size=200) -%}
+<svg viewBox="0 0 200 112" width="{{ size }}" class="dq-gauge" role="img" aria-label="{{ health if health is not none else 'n/a' }}/100">
+  <g fill="none" stroke-width="24" {% if health is none %}opacity=".25"{% endif %}><path d="M22.0 98.0 A78 78 0 0 1 36.0 53.4" stroke="#ef3a14"/><path d="M37.8 50.9 A78 78 0 0 1 74.5 24.3" stroke="#ff7f0e"/><path d="M77.3 23.4 A78 78 0 0 1 122.7 23.4" stroke="#fdd01c"/><path d="M125.5 24.3 A78 78 0 0 1 162.2 50.9" stroke="#8fd10f"/><path d="M164.0 53.4 A78 78 0 0 1 178.0 98.0" stroke="#12bf2c"/></g>
+  {% if health is not none %}
+  <g transform="rotate({{ -90 + health * 1.8 }} 100 98)"><polygon points="96,98 100,30 104,98" fill="#12272f" stroke="var(--bg-card)" stroke-width="1.2"/></g>
+  <circle cx="100" cy="98" r="8" fill="#12272f"/><circle cx="100" cy="98" r="3.4" fill="#fff"/>
+  {% endif %}
+</svg>
+{%- endmacro %}
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ current_case.title }} — {{ active_dataset }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body class="case-detail-page eda-page" data-dataset="{{ active_dataset }}" style="margin: 0; padding: 0;">
+
+  <!-- Top bar (only Back to Datasets & Dataset badge) -->
+  <div style="max-width: 1400px; margin: 1.5rem auto 0; padding: 0 1.5rem;">
+    <div class="topbar" style="margin-bottom: 1.25rem;">
+      <a href="{{ url_for('view_dataset', dataset_name=active_dataset) }}" class="btn btn-outline">← Pipeline ML</a>
+      <div class="dataset-pill"><img class="pill-cover" src="{{ url_for('dataset_cover', name=active_dataset) }}" alt=""><span>Dataset : <strong>{{ active_dataset }}</strong></span></div>
+    </div>
+  </div>
+
+  <div class="eda-page-wrapper">
+
+    <!-- ========================================================================
+         MAIN WORKSPACE: SIDEBAR + CONTENT
+         ======================================================================== -->
+    <div class="eda-layout">
+      
+      <!-- LEFT SIDEBAR FOR CASES (Overview, Noise, Outliers, Distributions, Feature Importance) -->
+      <aside class="eda-sidebar">
+        <!-- Section Title with micro badge -->
+        <div class="eda-sidebar-section-title">
+          <span>Étapes EDA</span>
+          <span class="eda-sidebar-step-badge">{{ all_cases|length }}</span>
+        </div>
+
+        <!-- Steps Menu with connected vertical timeline -->
+        <nav class="eda-nav-list">
+          {% for c_key, c_info in all_cases.items() %}
+            <a href="{{ url_for('view_case_detail', dataset_name=active_dataset, case_name=c_key) }}" 
+               class="eda-nav-item {% if c_key == current_case.id %}active{% endif %}"
+               title="{{ c_info.title }}">
+              <span class="eda-nav-icon">{{ eda_icon(c_key) }}</span>
+              <div class="eda-nav-text">
+                <span class="eda-nav-title">{% if c_key == 'descriptive' %}Overview{% elif c_key == 'quality' %}Data quality{% elif c_key == 'noise' %}Noise{% elif c_key == 'outliers' %}Outliers{% elif c_key == 'distribution' %}Distributions{% elif c_key == 'feature-importance' %}Feature importance{% else %}{{ c_info.title }}{% endif %}</span>
+              </div>
+              <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+            </a>
+          {% endfor %}
+        </nav>
+      </aside>
+
+      <!-- RIGHT MAIN CONTENT -->
+      <main class="eda-main-content">
+
+        <!-- Case Header: Just Title -->
+        <div class="eda-content-header" style="margin-bottom: 1.5rem; padding-bottom: 0.75rem;">
+          <div>
+            <h1 class="eda-content-title" style="font-size: 1.85rem;">{{ current_case.title }}</h1>
+          </div>
+        </div>
+
+      <!-- ======================================================================
+           CASE SPECIFIC CONTENT
+           ====================================================================== -->
+
+      <!-- CASE 1: ANALYSE DESCRIPTIVE -->
+      {% if current_case.id == 'descriptive' %}
+
+      <!-- ───────────── ACCORDION: click an item to show its result ───────────── -->
+      <div class="acc-list">
+      <div class="acc-item">
+        <button type="button" class="acc-head" aria-expanded="false" aria-controls="desc-head">
+          <span class="acc-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span>
+          <span class="acc-text"><span class="acc-title">Head</span><span class="acc-hint">Aperçu des 20 premières lignes</span></span>
+          <span class="acc-chev" aria-hidden="true">›</span>
+        </button>
+      <!-- ───────────── HEAD (Dataset Preview) ───────────── -->
+      <div id="desc-head" class="acc-body desc-section" hidden>
+        <div class="section-card" style="margin-top: 1.25rem;">
+          <div class="section-title">
+            <h3>👁️ Aperçu du Dataset (Head)</h3>
+            <p class="section-desc">Premiers enregistrements du jeu de données tel qu'il a été chargé.</p>
+          </div>
+          {% if tables.head and tables.head.rows %}
+          <div class="data-table-wrap" style="margin-top: 1rem;">
+            <table class="data-table" style="width: 100%; font-size: 0.78rem; border-collapse: collapse;">
+              <thead>
+                <tr>
+                  {% for col in tables.head.columns %}
+                    <th style="padding: 0.5rem 0.65rem; background: var(--bg-th); color: var(--accent-sky); border-bottom: 2px solid var(--border-subtle); white-space: nowrap; text-align: left; font-weight: 600;">{{ col }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in tables.head.rows %}
+                <tr style="border-bottom: 1px solid var(--border-subtle);">
+                  {% for col in tables.head.columns %}
+                    <td style="padding: 0.4rem 0.65rem; color: var(--text-secondary); white-space: nowrap;">{{ row[col] }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+            <div style="padding: 2rem; text-align: center; color: var(--text-muted);">Aucun aperçu disponible.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      </div>
+      <div class="acc-item">
+        <button type="button" class="acc-head" aria-expanded="false" aria-controls="desc-stats">
+          <span class="acc-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>
+          <span class="acc-text"><span class="acc-title">Statistiques</span><span class="acc-hint">Variables numériques et catégorielles</span></span>
+          <span class="acc-chev" aria-hidden="true">›</span>
+        </button>
+      <!-- ───────────── DESCRIPTIVE STATISTICS ───────────── -->
+      <div id="desc-stats" class="acc-body desc-section" hidden>
+        <div class="section-card" style="margin-top: 1.25rem;">
+          <div class="section-title">
+            <h3>📊 Statistiques Descriptives — Variables Numériques</h3>
+            <p class="section-desc">count, mean, std, min, 25%, 50% (médiane), 75%, max pour chaque variable continue.</p>
+          </div>
+          {% if tables.describe_numeric and tables.describe_numeric.rows %}
+          <div class="data-table-wrap" style="margin-top: 1rem;">
+            <table class="data-table" style="width: 100%; font-size: 0.78rem; border-collapse: collapse;">
+              <thead>
+                <tr>
+                  {% for col in tables.describe_numeric.columns %}
+                    <th style="padding: 0.5rem 0.65rem; background: var(--bg-th); color: var(--accent-sky); border-bottom: 2px solid var(--border-subtle); white-space: nowrap; text-align: left; font-weight: 600;">{{ col }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in tables.describe_numeric.rows %}
+                <tr style="border-bottom: 1px solid var(--border-subtle);">
+                  {% for col in tables.describe_numeric.columns %}
+                    <td style="padding: 0.4rem 0.65rem; color: var(--text-secondary); white-space: nowrap;">{{ row[col] }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+            <div style="padding: 2rem; text-align: center; color: var(--text-muted);">Aucune variable numérique détectée.</div>
+          {% endif %}
+        </div>
+
+        {% if tables.describe_categorical and tables.describe_categorical.rows %}
+        <div class="section-card" style="margin-top: 1.25rem;">
+          <div class="section-title">
+            <h3>🏷️ Statistiques Descriptives — Variables Catégorielles</h3>
+            <p class="section-desc">count, unique, top, freq pour chaque variable catégorielle / textuelle.</p>
+          </div>
+          <div style="overflow-x: auto; margin-top: 1rem;">
+            <table class="data-table" style="width: 100%; font-size: 0.78rem; border-collapse: collapse;">
+              <thead>
+                <tr>
+                  {% for col in tables.describe_categorical.columns %}
+                    <th style="padding: 0.5rem 0.65rem; background: var(--bg-card-hover); color: #2563eb; border-bottom: 2px solid var(--border-subtle); white-space: nowrap; text-align: left; font-weight: 600;">{{ col }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in tables.describe_categorical.rows %}
+                <tr style="border-bottom: 1px solid var(--border-subtle);">
+                  {% for col in tables.describe_categorical.columns %}
+                    <td style="padding: 0.4rem 0.65rem; color: var(--text-secondary); white-space: nowrap;">{{ row[col] }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      </div>
+      <div class="acc-item">
+        <button type="button" class="acc-head" aria-expanded="false" aria-controls="desc-missing">
+          <span class="acc-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>
+          <span class="acc-text"><span class="acc-title">Missing Data</span><span class="acc-hint">Valeurs manquantes par colonne</span></span>
+          <span class="acc-chev" aria-hidden="true">›</span>
+        </button>
+      <!-- ───────────── MISSING DATA REPORT ───────────── -->
+      <div id="desc-missing" class="acc-body desc-section" hidden>
+        <div class="section-card" style="margin-top: 1.25rem;">
+          <div class="section-title">
+            <h3>⚠️ Rapport Détaillé des Données Manquantes</h3>
+            <p class="section-desc">Nombre et pourcentage de valeurs manquantes pour chaque colonne du dataset.</p>
+          </div>
+
+          {% if tables.missing_report and tables.missing_report.rows %}
+          <div class="data-table-wrap" style="margin-top: 1rem;">
+            <table class="data-table" style="width: 100%; font-size: 0.78rem; border-collapse: collapse;">
+              <thead>
+                <tr>
+                  {% for col in tables.missing_report.columns %}
+                    <th style="padding: 0.5rem 0.65rem; background: var(--bg-th); color: #fbbf24; border-bottom: 2px solid var(--border-subtle); white-space: nowrap; text-align: left; font-weight: 600;">{{ col }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in tables.missing_report.rows %}
+                <tr style="border-bottom: 1px solid var(--border-subtle);">
+                  {% for col in tables.missing_report.columns %}
+                    <td style="padding: 0.4rem 0.65rem; color: var(--text-secondary); white-space: nowrap;">
+                      {% if col in ['Missing_Percentage', 'missing_percentage'] and row[col] is not none and row[col] != '—' %}
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                          <span>{{ row[col] }}%</span>
+                          <div style="flex: 1; height: 6px; background: rgba(15,23,42,0.08); border-radius: 3px; min-width: 60px;">
+                            <div style="height: 100%; border-radius: 3px; width: {{ row[col] }}%; background: {% if row[col]|float > 10 %}#ef4444{% elif row[col]|float > 0 %}#fbbf24{% else %}#22c55e{% endif %};"></div>
+                          </div>
+                        </div>
+                      {% else %}
+                        {{ row[col] }}
+                      {% endif %}
+                    </td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+            <div style="padding: 2rem; text-align: center; color: var(--text-muted);"><span style="font-size: 2rem;">✅</span><p style="margin-top: 0.5rem;">Aucune valeur manquante détectée.</p></div>
+          {% endif %}
+        </div>
+
+        <!-- Missing Values Chart (only if missing values exist) -->
+        {% if (summary.n_missing_cells or 0) > 0 %}
+        <div class="section-card" style="margin-top: 1.25rem; text-align: center;">
+          <div class="section-title" style="margin-bottom: 1rem;">
+            <h3>Visualisation Graphique des Données Manquantes</h3>
+          </div>
+          <img src="/results/{{ active_dataset }}/plots/missing_values.png" 
+               alt="Missing Values Plot" 
+               class="lightbox-trigger"
+               data-url="/results/{{ active_dataset }}/plots/missing_values.png"
+               data-title="Données Manquantes — {{ active_dataset }}"
+               onerror="this.parentElement.style.display='none'"
+               style="max-width: 100%; max-height: 420px; cursor: pointer; border-radius: var(--radius-sm);">
+        </div>
+        {% endif %}
+      </div>
+
+      </div>
+      <div class="acc-item">
+        <button type="button" class="acc-head" aria-expanded="false" aria-controls="desc-duplicates">
+          <span class="acc-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 013-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 01-3 3H3"/></svg></span>
+          <span class="acc-text"><span class="acc-title">Doublons</span><span class="acc-hint">Lignes dupliquées</span></span>
+          <span class="acc-chev" aria-hidden="true">›</span>
+        </button>
+      <!-- ───────────── DUPLICATES ───────────── -->
+      <div id="desc-duplicates" class="acc-body desc-section" hidden>
+        <div class="section-card" style="margin-top: 1.25rem;">
+          <div class="section-title">
+            <h3>🔁 Détection des Doublons</h3>
+            <p class="section-desc">Lignes identiques (doublon exact sur toutes les colonnes).</p>
+          </div>
+          
+          <div style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem; padding: 1rem; background: var(--bg-card-hover); border-radius: var(--radius-sm);">
+            <span style="font-size: 2rem;">{% if summary.n_duplicates > 0 %}🔁{% else %}✅{% endif %}</span>
+            <div>
+              <div style="font-size: 1.5rem; font-weight: 700; color: {% if summary.n_duplicates > 0 %}#f43f5e{% else %}#22c55e{% endif %};">{{ summary.n_duplicates }}</div>
+              <div style="color: var(--text-secondary); font-size: 0.85rem;">
+                {% if summary.n_duplicates > 0 %}
+                  lignes dupliquées détectées ({{ "{:.2f}".format(summary.n_duplicates / summary.n_rows * 100) }}% du dataset)
+                {% else %}
+                  Aucun doublon détecté dans le jeu de données.
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          {% if tables.duplicates_sample and tables.duplicates_sample.rows %}
+          <div style="margin-top: 1rem;">
+            <h4 style="color: var(--accent-sky); font-size: 0.9rem; margin-bottom: 0.5rem;">Échantillon des lignes dupliquées (max 50) :</h4>
+            <div class="data-table-wrap">
+              <table class="data-table" style="width: 100%; font-size: 0.75rem; border-collapse: collapse;">
+                <thead>
+                  <tr>
+                    {% for col in tables.duplicates_sample.columns %}
+                      <th style="padding: 0.4rem 0.55rem; background: var(--bg-th); color: #f43f5e; border-bottom: 2px solid var(--border-subtle); white-space: nowrap; text-align: left; font-weight: 600;">{{ col }}</th>
+                    {% endfor %}
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in tables.duplicates_sample.rows[:20] %}
+                  <tr style="border-bottom: 1px solid var(--border-subtle);">
+                    {% for col in tables.duplicates_sample.columns %}
+                      <td style="padding: 0.35rem 0.55rem; color: var(--text-secondary); white-space: nowrap;">{{ row[col] }}</td>
+                    {% endfor %}
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% if tables.duplicates_sample.rows|length > 20 %}
+            <p style="margin-top: 0.5rem; color: var(--text-muted); font-size: 0.8rem; text-align: center;">
+              Affichage des 20 premières lignes sur {{ tables.duplicates_sample.rows|length }} doublons échantillonnés.
+            </p>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      </div>
+      <div class="acc-item">
+        <button type="button" class="acc-head" aria-expanded="false" aria-controls="desc-types">
+          <span class="acc-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><path d="M9 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg></span>
+          <span class="acc-text"><span class="acc-title">Types</span><span class="acc-hint">Variables numériques vs catégorielles</span></span>
+          <span class="acc-chev" aria-hidden="true">›</span>
+        </button>
+      <!-- ───────────── FEATURE TYPES ───────────── -->
+      <div id="desc-types" class="acc-body desc-section" hidden>
+        <div class="section-card" style="margin-top: 1.25rem;">
+          <div class="section-title">
+            <h3>🔬 Répartition & Typologie des Variables</h3>
+            <p class="section-desc">Attributs détectés et identifiés automatiquement par le moteur de profilage.</p>
+          </div>
+
+          <div class="feature-pills-flow">
+            <div class="feature-pills-group">
+              <h4 class="group-title">Variables Numériques Continues ({{ summary.numeric_columns|length }}) :</h4>
+              <div class="pills-flex">
+                {% for col in summary.numeric_columns %}
+                  <span class="feature-tag numeric">📈 {{ col }}</span>
+                {% endfor %}
+              </div>
+            </div>
+
+            {% if summary.categorical_columns %}
+            <div class="feature-pills-group" style="margin-top: 1.25rem;">
+              <h4 class="group-title">Variables Catégorielles / Textuelles ({{ summary.categorical_columns|length }}) :</h4>
+              <div class="pills-flex">
+                {% for col in summary.categorical_columns %}
+                  <span class="feature-tag categorical">🏷️ {{ col }}</span>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Data Types Table -->
+          {% if summary.dtypes %}
+          <div style="margin-top: 1.25rem; overflow-x: auto;">
+            <h4 style="color: var(--accent-sky); font-size: 0.9rem; margin-bottom: 0.5rem;">Types de données (dtypes) :</h4>
+            <table class="data-table" style="width: 100%; max-width: 500px; font-size: 0.78rem; border-collapse: collapse;">
+              <thead>
+                <tr>
+                  <th style="padding: 0.45rem 0.65rem; background: var(--bg-card-hover); color: var(--accent-sky); border-bottom: 2px solid var(--border-subtle); text-align: left; font-weight: 600;">Colonne</th>
+                  <th style="padding: 0.45rem 0.65rem; background: var(--bg-card-hover); color: var(--accent-sky); border-bottom: 2px solid var(--border-subtle); text-align: left; font-weight: 600;">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for col_name, dtype in summary.dtypes.items() %}
+                <tr style="border-bottom: 1px solid var(--border-subtle);">
+                  <td style="padding: 0.35rem 0.65rem; color: var(--text-primary); font-weight: 500;">{{ col_name }}</td>
+                  <td style="padding: 0.35rem 0.65rem; color: var(--text-secondary);"><code style="background: rgba(37,99,235,0.12); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.75rem;">{{ dtype }}</code></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      </div>
+      </div>
+
+    <!-- CASE 2: NOISE -->
+    {% elif current_case.id == 'quality' %}
+
+      <style>
+        .dq-lvl-ok { --c:#16a34a; } .dq-lvl-warning { --c:#d97706; } .dq-lvl-critical { --c:#e5483a; } .dq-lvl-na { --c:#76839a; }
+        .dq-top { display:flex; flex-direction:column; align-items:center; padding:1.25rem 1rem 1rem; margin-bottom:1.25rem; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+        .dq-top .dq-score { font-family:var(--font-heading); font-size:2.1rem; font-weight:800; margin-top:-.4rem; color:var(--c); line-height:1; }
+        .dq-top .dq-score small { font-size:.8rem; color:var(--text-muted); font-weight:500; }
+        .dq-top .dq-sub { margin-top:.4rem; font-size:.85rem; color:var(--text-secondary); text-align:center; }
+        .dq-bars { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:.6rem 1.2rem; }
+        .dq-row { padding:.7rem 0; border-bottom:1px solid var(--border-subtle); }
+        .dq-row:last-child { border-bottom:0; }
+        .dq-row summary { cursor:pointer; list-style:none; }
+        .dq-row summary::-webkit-details-marker { display:none; }
+        .dq-rowhead { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:.4rem; }
+        .dq-rname { font-weight:700; font-size:.95rem; }
+        .dq-rname small { font-weight:400; color:var(--text-muted); font-size:.75rem; }
+        .dq-rscore { font-weight:700; font-size:.92rem; color:var(--c); }
+        .dq-track { height:9px; border-radius:6px; background:var(--border-subtle); overflow:hidden; }
+        .dq-track i { display:block; height:100%; border-radius:6px; background:var(--c); }
+        .dq-badge { display:inline-block; padding:.12rem .6rem; margin-right:.4rem; border-radius:999px; font-size:.72rem; font-weight:700; color:var(--c); background:color-mix(in srgb, var(--c) 14%, transparent); border:1px solid color-mix(in srgb, var(--c) 40%, transparent); }
+        .dq-tip { font-size:.8rem; color:var(--text-secondary); margin:.6rem 0 0; }
+        .dq-det { width:100%; border-collapse:collapse; margin-top:.5rem; }
+        .dq-det td { padding:.2rem .3rem; font-size:.75rem; border-bottom:1px solid var(--border-subtle); color:var(--text-secondary); }
+        .dq-gauge { max-width:100%; height:auto; }
+        .dq-tgt { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:.4rem; margin-bottom:1.1rem; font-size:.78rem; color:var(--text-muted); }
+      </style>
+
+      {% if quality_error %}
+        <div class="section-card"><div class="nx-error">⚠️ {{ quality_error }}</div></div>
+      {% elif quality %}
+
+      <div class="dq-top dq-lvl-{{ quality.level }}">
+        {{ gauge(quality.score, 300) }}
+        <div class="dq-score">{{ quality.score if quality.score is not none else '–' }}<small> / 100</small></div>
+        <div class="dq-sub">{{ quality.verdict }}</div>
+      </div>
+
+
+      <div class="dq-bars">
+        {% for ind in quality.indicators %}
+        <details class="dq-row dq-lvl-{{ ind.status }}" id="dq-{{ ind.key }}">
+          <summary>
+            <div class="dq-rowhead">
+              <span class="dq-rname">{{ ind.icon }} {{ ind.title }} <small>· {{ ind.display }} {{ ind.caption }}</small></span>
+              <span class="dq-rscore">{% if ind.health is not none %}{{ ind.health }}/100{% else %}N/A{% endif %}</span>
+            </div>
+            <div class="dq-track"><i style="width: {{ ind.health if ind.health is not none else 0 }}%"></i></div>
+          </summary>
+          <p class="dq-tip"><span class="dq-badge">{{ ind.status_label }}</span> {{ ind.advice }}</p>
+          {% if ind.details %}
+          <table class="dq-det">
+            {% for d in ind.details[:6] %}<tr><td>{{ d.column }}</td><td style="text-align:right;">{{ d.value }}{{ '' if ind.key == 'noise' else '%' }}</td></tr>{% endfor %}
+          </table>
+          {% endif %}
+        </details>
+        {% endfor %}
+      </div>
+
+      {% endif %}
+
+    {% elif current_case.id == 'noise' %}
+
+      {% set smoothed_plots = plots|selectattr('category', 'equalto', 'smoothed')|list %}
+      {% set ref_noise_plot = (plots|selectattr('category', 'equalto', 'reference_noise')|list)|first %}
+      {% set ref_info = summary.reference_noise_info or {} %}
+      {% set is_ts = (summary.dataset_type == 'time_series') or (smoothed_plots|length > 0) %}
+
+      {% if is_ts %}
+        <!-- TIME-SERIES: ROLLING MEAN -->
+
+        <!-- Interactive noise explorer (Rolling Mean) -->
+        <script src="{{ url_for('static', filename='js/plotly.min.js') }}"></script>
+        <div class="section-card" style="margin-top: 1.75rem;" id="noiseExplorer" data-dataset="{{ active_dataset }}">
+
+          <!-- Sélecteur de variable -->
+          <div class="nf-panel">
+            <div class="nf-top">
+              <div class="nf-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input id="nfSearch" type="text" placeholder="Trouver une variable…" autocomplete="off" aria-label="Chercher une variable">
+              </div>
+              <div class="nf-count"><b id="nfShown">{{ smoothed_plots|length }}</b><span> variables</span></div>
+            </div>
+            <div class="nf-chips" id="nfChips" role="tablist">
+              {% for p in smoothed_plots %}
+                {% set fkey = p.feature or p.title %}
+                {% set flabel = p.title|replace('Smoothed Trend - ', '') %}
+                <button type="button" class="nf-chip{% if loop.first %} active{% endif %}" data-key="{{ fkey }}">{{ flabel }}</button>
+              {% endfor %}
+            </div>
+            <div class="nf-empty" id="nfEmpty" hidden>Aucune variable ne correspond à cette recherche.</div>
+          </div>
+
+          <!-- Contrôles interactifs -->
+          <div class="nx-controls" id="nxControls">
+            <label class="nx-field"><span>Année</span>
+              <select id="nxYear"><option value="">Toutes</option></select>
+            </label>
+            <label class="nx-field"><span id="nxFromLbl">Borne début</span><input type="date" id="nxFrom"></label>
+            <label class="nx-field"><span id="nxToLbl">Borne fin</span><input type="date" id="nxTo"></label>
+            <label class="nx-field"><span>Méthode</span>
+              <select id="nxMethod"><option value="mean">Moyenne mobile</option><option value="median">Médiane mobile</option></select>
+            </label>
+            <label class="nx-field nx-range"><span>Fenêtre <b id="nxWinVal">–</b></span><input type="range" id="nxWin" min="1" max="500" value="50"></label>
+            <label class="nx-field nx-range"><span>Seuil de bruit <b id="nxKVal">±2σ</b></span><input type="range" id="nxK" min="0.5" max="4" step="0.5" value="2"></label>
+            <button type="button" class="nx-reset" id="nxReset">↺ Réinitialiser</button>
+          </div>
+
+          <div class="nx-stats" id="nxStats"></div>
+
+          <div class="nx-stage">
+            <div id="nxPlot" class="nx-plot"></div>
+            <div class="nx-loading" id="nxLoading" hidden>Chargement…</div>
+          </div>
+
+          <div class="nx-error" id="nxError" hidden></div>
+
+          <!-- Fallback : images statiques si l'API ou Plotly est indisponible -->
+          <div class="plots-grid" id="noisePlotsGrid" data-no-gallery="1" hidden>
+            {% for p in smoothed_plots %}
+              <div class="plot-card" data-category="{{ p.category }}" data-title="{{ p.title }}" data-feature="{{ p.feature or p.title }}" hidden>
+                <div class="plot-img-container lightbox-trigger" data-url="{{ p.url }}" data-title="{{ p.title }}">
+                  <img src="{{ p.url }}" alt="{{ p.title }}" loading="lazy">
+                </div>
+                <div class="plot-info"><h4 class="plot-title">{{ p.title }}</h4></div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <script>
+          (function () {
+            var root = document.getElementById("noiseExplorer"); if (!root) return;
+            var $ = function (id) { return document.getElementById(id); };
+            var dataset = root.getAttribute("data-dataset");
+            var chips = $("nfChips"), search = $("nfSearch"), empty = $("nfEmpty");
+            var yearSel = $("nxYear"), from = $("nxFrom"), to = $("nxTo"), win = $("nxWin"), kEl = $("nxK");
+            var plotDiv = $("nxPlot"), loading = $("nxLoading"), statsEl = $("nxStats"), grid = $("noisePlotsGrid");
+            var active = (chips.querySelector(".nf-chip.active") || {}).dataset;
+            active = active ? active.key : null;
+            var st = { year: "", start: "", end: "", window: null, k: 2, method: "mean" }, seq = 0, meta = null, timer = null, firstLoad = true;
+            var css = getComputedStyle(document.documentElement);
+            var txt = "#475569", grid_c = "rgba(15,23,42,.09)";
+
+            function fallback(reason) {
+              var err = $("nxError");
+              err.innerHTML = "⚠️ Graphique interactif indisponible : <b></b> <button type='button' id='nxRetry'>Réessayer</button>";
+              err.querySelector("b").textContent = reason || "erreur inconnue"; err.hidden = false;
+              $("nxRetry").onclick = function () { err.hidden = true; grid.hidden = true; plotDiv.parentNode.hidden = false; $("nxControls").hidden = false; statsEl.hidden = false; firstLoad = true; load(); };
+              plotDiv.parentNode.hidden = true; $("nxControls").hidden = true; statsEl.hidden = true;
+              grid.hidden = false;
+              [].forEach.call(grid.querySelectorAll(".plot-card"), function (c) { c.hidden = c.getAttribute("data-feature") !== active; });
+            }
+
+            function fmt(v) { return (v === null || v === undefined) ? "–" : v; }
+
+            function render(d) {
+              meta = d;
+              var isDate = d.time_kind === "datetime";
+              $("nxFromLbl").textContent = isDate ? "Borne début" : "Point début";
+              $("nxToLbl").textContent = isDate ? "Borne fin" : "Point fin";
+              from.type = to.type = isDate ? "date" : "number";
+              from.min = to.min = d.min; from.max = to.max = d.max;
+              from.value = st.start; to.value = st.end;
+              yearSel.parentNode.hidden = !isDate || !d.years.length;
+              if (!yearSel.dataset.filled || yearSel.dataset.col !== d.column) {
+                yearSel.innerHTML = '<option value="">Toutes</option>' + d.years.map(function (y) { return '<option>' + y + '</option>'; }).join("");
+                yearSel.dataset.filled = "1"; yearSel.dataset.col = d.column; yearSel.value = st.year;
+              }
+              win.max = d.max_window; win.value = d.window; $("nxWinVal").textContent = d.window + " pts";
+              kEl.value = d.k; $("nxKVal").textContent = "±" + d.k + "σ";
+
+              statsEl.innerHTML =
+                '<div><small>Variable</small><b>' + d.column + '</b></div>' +
+                '<div><small>Écart-type du bruit (σ)</small><b>' + d.sigma + '</b></div>' +
+                '<div><small>Bornes ±' + d.k + 'σ</small><b>' + d.bound_lo + ' → ' + d.bound_hi + '</b></div>' +
+                '<div class="hot"><small>Points hors bornes</small><b>' + d.outside + ' <em>(' + d.outside_pct + '%)</em></b></div>' +
+                '<div><small>Points affichés</small><b>' + d.n_selected.toLocaleString() + (d.n_points < d.n_selected ? ' <em>(échantillonnés ' + d.n_points.toLocaleString() + ')</em>' : '') + '</b></div>';
+
+              var out = { x: [], y: [] };
+              for (var i = 0; i < d.x.length; i++) {
+                var v = d.noise[i];
+                if (v !== null && (v < d.bound_lo || v > d.bound_hi)) { out.x.push(d.x[i]); out.y.push(v); }
+              }
+              var traces = [
+                { x: d.x, y: d.raw, name: "Signal brut", type: "scattergl", mode: "lines", line: { color: "rgba(148,163,184,.55)", width: 1 }, xaxis: "x", yaxis: "y", hovertemplate: "%{y}<extra>Brut</extra>" },
+                { x: d.x, y: d.smooth, name: (d.method === "median" ? "Médiane mobile (" : "Moyenne mobile (") + d.window + ")", type: "scattergl", mode: "lines", line: { color: "#38bdf8", width: 2.6 }, xaxis: "x", yaxis: "y", hovertemplate: "%{y}<extra>Lissé</extra>" },
+                { x: d.x, y: d.noise, name: "Bruit (brut − lissé)", type: "scattergl", mode: "lines", line: { color: "#0ea5e9", width: 1 }, xaxis: "x", yaxis: "y2", hovertemplate: "%{y}<extra>Bruit</extra>" },
+                { x: out.x, y: out.y, name: "Hors bornes", type: "scattergl", mode: "markers", marker: { color: "#f87171", size: 5 }, xaxis: "x", yaxis: "y2", hovertemplate: "%{y}<extra>Hors bornes</extra>" }
+              ];
+              var band = function (y) { return { type: "line", xref: "paper", x0: 0, x1: 1, yref: "y2", y0: y, y1: y, line: { color: "#fbbf24", width: 1.2, dash: "dash" } }; };
+              var layout = {
+                height: 560, margin: { l: 55, r: 20, t: 10, b: 40 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+                font: { color: txt, family: "inherit", size: 12 }, hovermode: "x unified", dragmode: "zoom",
+                legend: { orientation: "h", y: 1.08, x: 0 },
+                xaxis: { gridcolor: grid_c, anchor: "y2", showspikes: true, spikecolor: "#64748b", spikethickness: 1 },
+                yaxis: { domain: [0.36, 1], gridcolor: grid_c, title: { text: d.column, font: { size: 11 } } },
+                yaxis2: { domain: [0, 0.28], gridcolor: grid_c, zeroline: true, zerolinecolor: "rgba(15,23,42,.30)", title: { text: "Bruit", font: { size: 11 } } },
+                shapes: [band(d.bound_lo), band(d.bound_hi)]
+              };
+              Plotly.react(plotDiv, traces, layout, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
+            }
+
+            function load() {
+              if (!active) return;
+              if (typeof Plotly === "undefined") { fallback("Plotly n\u2019est pas chargé (vérifiez que static/js/plotly.min.js existe)"); return; }
+              var my = ++seq, q = new URLSearchParams();
+              if (st.window) q.set("window", st.window);
+              if (st.start) q.set("start", st.start);
+              if (st.end) q.set("end", st.end);
+              q.set("k", st.k); q.set("method", st.method);
+              loading.hidden = false;
+              fetch("/api/noise-series/" + encodeURIComponent(dataset) + "/" + encodeURIComponent(active) + "?" + q)
+                .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || r.status); return j; }); })
+                .then(function (d) { if (my === seq) { loading.hidden = true; render(d); firstLoad = false; } })
+                .catch(function (e) { if (my !== seq) return; loading.hidden = true; console.warn("Noise API:", e); if (firstLoad || !meta) fallback(e.message || String(e)); });
+            }
+            function later() { clearTimeout(timer); timer = setTimeout(load, 220); }
+
+            function selectFeature(key) {
+              active = key; st = { year: "", start: "", end: "", window: null, k: st.k, method: st.method }; yearSel.dataset.filled = "";
+              [].forEach.call(chips.querySelectorAll(".nf-chip"), function (c) { c.classList.toggle("active", c.getAttribute("data-key") === key); });
+              if (!grid.hidden) fallback($("nxError").querySelector("b") ? $("nxError").querySelector("b").textContent : ""); else load();
+            }
+            chips.addEventListener("click", function (e) { var b = e.target.closest(".nf-chip"); if (b) selectFeature(b.getAttribute("data-key")); });
+            search.addEventListener("input", function () {
+              var q = search.value.trim().toLowerCase(), n = 0;
+              [].forEach.call(chips.querySelectorAll(".nf-chip"), function (c) { var ok = !q || c.getAttribute("data-key").toLowerCase().indexOf(q) >= 0; c.hidden = !ok; if (ok) n++; });
+              $("nfShown").textContent = n; empty.hidden = n > 0;
+            });
+
+            yearSel.addEventListener("change", function () {
+              st.year = yearSel.value;
+              st.start = st.year ? st.year + "-01-01" : ""; st.end = st.year ? st.year + "-12-31" : "";
+              load();
+            });
+            from.addEventListener("change", function () { st.start = from.value; st.year = ""; yearSel.value = ""; load(); });
+            to.addEventListener("change", function () { st.end = to.value; st.year = ""; yearSel.value = ""; load(); });
+            $("nxMethod").addEventListener("change", function () { st.method = $("nxMethod").value; load(); });
+            win.addEventListener("input", function () { st.window = +win.value; $("nxWinVal").textContent = win.value + " pts"; later(); });
+            kEl.addEventListener("input", function () { st.k = +kEl.value; $("nxKVal").textContent = "±" + kEl.value + "σ"; later(); });
+            $("nxReset").addEventListener("click", function () { st = { year: "", start: "", end: "", window: null, k: 2, method: "mean" }; yearSel.value = ""; $("nxMethod").value = "mean"; load(); });
+
+            load();
+          })();
+        </script>
+
+      {% else %}
+        <!-- NON TIME-SERIES: DETECT_REFERENCE_NOISE -->
+
+        <div class="section-card" style="margin-top: 1.75rem;">
+          <div class="section-title">
+            <h3>🔬 Détection du Bruit par Variable de Référence (detect_reference_noise)</h3>
+            <p class="section-desc">
+              Pour les données tabulaires standards (non temporelles), l'analyse du bruit s'appuie sur la comparaison entre deux variables fortement corrélées (mesure vs référence) pour isoler les déviations aberrantes au-delà de la tolérance.
+            </p>
+          </div>
+
+          <!-- Metrics summary pill-row -->
+          {% if ref_info %}
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 1rem; margin-top: 1rem; margin-bottom: 1.25rem;">
+            <div style="background: var(--bg-card-hover); padding: 0.85rem 1rem; border-radius: var(--radius-sm); border-left: 3px solid #10b981;">
+              <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Points Conformes (Tolérance OK)</div>
+              <div style="font-size: 1.2rem; font-weight: 700; color: #10b981; margin-top: 0.25rem;">
+                {{ "{:,}".format(ref_info.normal_count or 0) }}
+                <span style="font-size: 0.8rem; font-weight: 400; color: var(--text-secondary);">
+                  ({{ ((ref_info.normal_count or 0) / (ref_info.total_comparisons or 1) * 100)|round(1) }}%)
+                </span>
+              </div>
+            </div>
+
+            <div style="background: var(--bg-card-hover); padding: 0.85rem 1rem; border-radius: var(--radius-sm); border-left: 3px solid #ef4444;">
+              <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Bruit / Écarts Anormaux</div>
+              <div style="font-size: 1.2rem; font-weight: 700; color: #ef4444; margin-top: 0.25rem;">
+                {{ "{:,}".format(ref_info.noise_count or 0) }}
+                <span style="font-size: 0.8rem; font-weight: 400; color: var(--text-secondary);">
+                  ({{ ref_info.noise_percent or 0 }}%)
+                </span>
+              </div>
+            </div>
+
+            <div style="background: var(--bg-card-hover); padding: 0.85rem 1rem; border-radius: var(--radius-sm); border-left: 3px solid var(--accent-sky);">
+              <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Comparaisons Valides</div>
+              <div style="font-size: 1.2rem; font-weight: 700; color: var(--accent-sky); margin-top: 0.25rem;">
+                {{ "{:,}".format(ref_info.total_comparisons or 0) }}
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Plot display -->
+          <div style="text-align: center; margin-top: 1rem;">
+            <img src="/results/{{ active_dataset }}/plots/reference_noise.png"
+                 alt="Reference Noise Plot"
+                 class="lightbox-trigger"
+                 data-url="/results/{{ active_dataset }}/plots/reference_noise.png"
+                 data-title="Analyse du Bruit de Référence — {{ active_dataset }}"
+                 style="max-width: 100%; max-height: 520px; cursor: pointer; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);"
+                 onerror="this.parentElement.innerHTML='<div style=\'padding:2rem;color:var(--text-muted);\'>Aucune visualisation graphique de bruit de référence disponible.</div>'">
+            <div style="margin-top: 0.75rem;">
+              <a href="/results/{{ active_dataset }}/plots/reference_noise.png" class="btn btn-outline" style="font-size: 0.8rem; padding: 0.35rem 0.85rem; text-decoration: none;" download>
+                📥 Télécharger Graphique Haute Résolution
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sample of flagged noise rows if available -->
+        {% if tables.reference_noise and tables.reference_noise.rows %}
+        <div class="section-card" style="margin-top: 1.5rem;">
+          <div class="section-title">
+            <h3>📋 Échantillon des Points Qualifiés de Bruit (Écart > {{ ref_info.tolerance or 0.5 }})</h3>
+            <p class="section-desc">Extrait des observations dépassant le seuil de tolérance de mesure.</p>
+          </div>
+          <div class="data-table-wrap" style="margin-top: 1rem;">
+            <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+              <thead>
+                <tr>
+                  {% for col in tables.reference_noise.columns %}
+                    <th style="padding: 0.5rem 0.65rem; background: var(--bg-th); color: var(--accent-sky); border-bottom: 2px solid var(--border-subtle); white-space: nowrap; text-align: left; font-weight: 600;">{{ col }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in tables.reference_noise.rows[:25] %}
+                <tr style="border-bottom: 1px solid var(--border-subtle);">
+                  {% for col in tables.reference_noise.columns %}
+                    <td style="padding: 0.4rem 0.65rem; color: var(--text-secondary); white-space: nowrap;">
+                      {% if col == 'absolute_error' and row[col] is not none and row[col] != '—' %}
+                        <span style="color: #ef4444; font-weight: 600;">{{ row[col] }}</span>
+                      {% else %}
+                        {{ row[col] }}
+                      {% endif %}
+                    </td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
+      {% endif %}
+
+    <!-- CASE 3: OUTLIERS -->
+    {% elif current_case.id == 'outliers' %}
+
+      {% set boxplots = plots|selectattr('category', 'equalto', 'boxplot')|list %}
+
+      {% if outliers_summary_list %}
+      <!-- Détection GLOBALE des outliers : Isolation Forest sur toutes les variables numériques -->
+      <script src="{{ url_for('static', filename='js/plotly.min.js') }}"></script>
+      <div class="section-card" style="margin-top: 1.75rem;" id="outlierExplorer" data-dataset="{{ active_dataset }}">
+
+
+        <!-- Réglage du taux de contamination -->
+        <div class="nf-panel" style="margin-bottom:1rem;">
+          <div style="display:flex; flex-wrap:wrap; align-items:center; gap:.75rem;">
+            <label for="ifCont" style="font-size:.85rem; color: var(--text-muted);">Taux d'outliers attendu</label>
+            <button type="button" class="nf-chip active" id="ifAuto">Auto</button>
+            <input id="ifCont" type="range" min="1" max="30" step="1" value="5" style="width:200px;" aria-label="Taux de contamination">
+            <b id="ifContVal" style="min-width:3.2rem;">Auto</b>
+          </div>
+        </div>
+
+        <div class="nx-stats" id="ifStats"></div>
+
+        <div class="nx-stage" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:1rem;">
+          <div style="position:relative;"><div id="ifScatter" class="nx-plot"></div></div>
+          <div style="position:relative;"><div id="ifHist" class="nx-plot"></div></div>
+          <div class="nx-loading" id="ifLoading" hidden>Calcul en cours…</div>
+        </div>
+
+        <div class="nx-error" id="ifError" hidden></div>
+
+        <div id="ifBody" style="margin-top: 1.25rem;">
+          <h4 style="font-family: var(--font-heading); font-size: .95rem; margin: 0 0 .6rem;">Variables les plus extrêmes parmi les outliers</h4>
+          <div id="ifDrivers" style="margin-bottom:1.25rem;"></div>
+
+          <h4 style="font-family: var(--font-heading); font-size: .95rem; margin: 0 0 .6rem;">Lignes les plus anormales <span style="font-weight:400; color: var(--text-muted); font-size:.8rem;">(du score le plus élevé au plus faible)</span></h4>
+          <style>#ifTable thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-th); }</style>
+          <div id="ifTable" style="max-height: 300px; overflow: auto;"></div>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          var root = document.getElementById("outlierExplorer"); if (!root) return;
+          var $ = function (id) { return document.getElementById(id); };
+          var dataset = root.getAttribute("data-dataset");
+          var st = { cont: "auto" }, seq = 0, timer = null, last = null;
+          var txt = "#475569", grid_c = "rgba(15,23,42,.09)";
+
+          function esc(s) { return String(s === null || s === undefined ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+          function sev(p) { return p > 10 ? ["Élevée", "#f87171"] : (p > 3 ? ["Modérée", "#fbbf24"] : ["Faible", "#34d399"]); }
+          function fail(msg) {
+            var err = $("ifError");
+            err.innerHTML = "⚠️ Isolation Forest indisponible : <b></b> <button type='button' id='ifRetry'>Réessayer</button>";
+            err.querySelector("b").textContent = msg || "erreur inconnue"; err.hidden = false;
+            $("ifRetry").onclick = function () { err.hidden = true; load(); };
+          }
+
+          function render(d) {
+            last = d; $("ifError").hidden = true;
+            var s = sev(d.outlier_pct);
+            $("ifStats").innerHTML =
+              '<div class="hot"><small>Lignes outliers</small><b>' + d.n_outliers.toLocaleString() + ' <em>(' + d.outlier_pct + '%)</em></b></div>' +
+              '<div><small>Lignes normales</small><b>' + d.n_inliers.toLocaleString() + '</b></div>' +
+              '<div><small>Lignes analysées</small><b>' + d.n.toLocaleString() + '</b></div>' +
+              '<div><small>Variables utilisées</small><b>' + d.n_features + '</b></div>' +
+              '<div><small>Contamination</small><b>' + (d.contamination === "auto" ? "Auto" : Math.round(d.contamination * 100) + " %") + '</b></div>' +
+              '<div><small>Seuil de score</small><b>' + d.threshold + '</b></div>' +
+              '<div><small>Sévérité</small><b style="color:' + s[1] + '">' + s[0] + '</b></div>' +
+              '<div><small>Arbres</small><b>' + d.n_estimators + '</b></div>';
+
+            var base = { height: 350, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", font: { color: txt, family: "inherit", size: 12 },
+                         legend: { orientation: "h", y: -0.22, x: 0 }, margin: { l: 50, r: 15, t: 45, b: 75 } };
+            var cfg = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] };
+
+            if (d.scatter) {
+              var a = d.scatter.inliers, b = d.scatter.outliers;
+              Plotly.react($("ifScatter"), [
+                { type: "scattergl", mode: "markers", name: "Normales", x: a.x, y: a.y, customdata: a.row.map(function (r, i) { return [r, a.score[i]]; }),
+                  marker: { color: "rgba(148,163,184,.45)", size: 4 }, hovertemplate: "Ligne %{customdata[0]}<br>score %{customdata[1]}<extra>Normale</extra>" },
+                { type: "scattergl", mode: "markers", name: "Outliers", x: b.x, y: b.y, customdata: b.row.map(function (r, i) { return [r, b.score[i]]; }),
+                  marker: { color: "#f87171", size: 6, opacity: 0.85 }, hovertemplate: "Ligne %{customdata[0]}<br>score %{customdata[1]}<extra>Outlier</extra>" }
+              ], Object.assign({}, base, {
+                title: { text: "Projection PCA (toutes variables)", font: { size: 13 } },
+                xaxis: { gridcolor: grid_c, zeroline: false, title: { text: "PC1 (" + d.scatter.var[0] + " %)", font: { size: 11 } } },
+                yaxis: { gridcolor: grid_c, zeroline: false, title: { text: "PC2 (" + d.scatter.var[1] + " %)", font: { size: 11 } } }
+              }), cfg);
+            } else { $("ifScatter").innerHTML = '<p class="section-desc">Projection indisponible (moins de 2 variables).</p>'; }
+
+            Plotly.react($("ifHist"), [
+              { type: "bar", name: "Normales", x: d.hist.x, y: d.hist.inliers, marker: { color: "rgba(56,189,248,.65)" } },
+              { type: "bar", name: "Outliers", x: d.hist.x, y: d.hist.outliers, marker: { color: "#f87171" } }
+            ], Object.assign({}, base, {
+              barmode: "stack", title: { text: "Distribution des scores d'anomalie", font: { size: 13 } },
+              xaxis: { gridcolor: grid_c, zeroline: false, title: { text: "Score d'anomalie (plus haut = plus isolé)", font: { size: 11 } } },
+              yaxis: { gridcolor: grid_c, zeroline: false, title: { text: "Nombre de lignes", font: { size: 11 } } },
+              shapes: [{ type: "line", xref: "x", x0: d.threshold, x1: d.threshold, yref: "paper", y0: 0, y1: 1, line: { color: "#fbbf24", width: 1.4, dash: "dash" } }]
+            }), cfg);
+
+            $("ifDrivers").innerHTML = d.drivers.length
+              ? '<table class="data-table" style="width:100%; font-size:.8rem;"><thead><tr><th>Variable</th><th>% des outliers très extrêmes (|z|&gt;3)</th><th>|z| moyen</th></tr></thead><tbody>' +
+                d.drivers.map(function (r) { return '<tr><td>' + esc(r.feature) + '</td><td>' + r.pct_extreme + ' %</td><td>' + r.mean_abs_z + '</td></tr>'; }).join("") + '</tbody></table>'
+              : '<p class="section-desc">Aucune variable ne ressort individuellement : ces lignes sont atypiques par <b>combinaison</b> de variables.</p>';
+
+            $("ifTable").innerHTML = '<table class="data-table" id="ifTableT" style="width:100%; font-size:.8rem;"><thead><tr><th>Ligne</th>' + (d.date_col ? '<th>' + esc(d.date_col) + '</th>' : '') +
+              '<th>Score</th><th>Statut</th><th>Variables les plus inhabituelles (valeur · z)</th></tr></thead><tbody>' +
+              d.table.map(function (r) {
+                return '<tr><td>' + esc(r.row) + '</td>' + (d.date_col ? '<td>' + esc(r.date) + '</td>' : '') + '<td><strong>' + esc(r.score) + '</strong></td>' +
+                  '<td style="color:' + (r.outlier ? "#f87171" : "#34d399") + '">' + (r.outlier ? "Outlier" : "Normale") + '</td><td>' +
+                  r.why.map(function (w) { return esc(w.feature) + ' = ' + esc(w.value) + ' (z ' + esc(w.z) + ')'; }).join(" · ") + '</td></tr>';
+              }).join("") + '</tbody></table>';
+          }
+
+          function load() {
+            if (typeof Plotly === "undefined") { fail("Plotly n\u2019est pas chargé (vérifiez static/js/plotly.min.js)"); return; }
+            var my = ++seq; $("ifLoading").hidden = false;
+            fetch("/api/isolation-forest/" + encodeURIComponent(dataset) + "?" + new URLSearchParams({ contamination: st.cont }))
+              .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || r.status); return j; }); })
+              .then(function (d) { if (my === seq) { $("ifLoading").hidden = true; render(d); } })
+              .catch(function (e) { if (my !== seq) return; $("ifLoading").hidden = true; console.warn("Isolation Forest API:", e); fail(e.message || String(e)); });
+          }
+          function later() { clearTimeout(timer); timer = setTimeout(load, 350); }
+
+          $("ifCont").addEventListener("input", function () {
+            st.cont = (this.value / 100).toFixed(2); $("ifContVal").textContent = this.value + " %"; $("ifAuto").classList.remove("active"); later();
+          });
+          $("ifAuto").addEventListener("click", function () {
+            st.cont = "auto"; $("ifContVal").textContent = "Auto"; this.classList.add("active"); later();
+          });
+          load();
+        })();
+      </script>
+      {% else %}
+      <div class="section-card" style="margin-top: 1.75rem;">
+        <p class="section-desc">Aucune variable numérique exploitable pour la détection d'outliers dans ce dataset.</p>
+      </div>
+      {% endif %}
+
+
+    <!-- CASE 4: DISTRIBUTION -->
+    {% elif current_case.id == 'distribution' %}
+
+      {% set dist_plots = plots|selectattr('category', 'equalto', 'distribution')|list %}
+      {% set has_corr = (tables.correlation and tables.correlation.rows) %}
+      {% set has_target = summary.target_class and tables.class_balance and tables.class_balance.rows %}
+
+      {% if dist_plots or has_corr %}
+      <!-- Explorateur interactif des distributions -->
+      <script src="{{ url_for('static', filename='js/plotly.min.js') }}"></script>
+      <div class="section-card" style="margin-top: 1.75rem;" id="distExplorer" data-dataset="{{ active_dataset }}">
+
+        <!-- Sélecteur -->
+        <div class="nf-panel">
+          <div class="nf-top">
+            <div class="nf-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="dfSearch" type="text" placeholder="Trouver une variable…" autocomplete="off" aria-label="Chercher une variable">
+            </div>
+            <div class="nf-count"><b id="dfShown">{{ dist_plots|length + (1 if has_corr else 0) + (1 if has_target else 0) }}</b><span> vues</span></div>
+          </div>
+          <div class="nf-chips" id="dfChips" role="tablist">
+            {% for p in dist_plots %}
+              {% set flabel = p.title|replace('Distribution (Hist + KDE) - ', '') %}
+              <button type="button" class="nf-chip{% if loop.first %} active{% endif %}" data-key="{{ p.feature }}">{{ flabel }}</button>
+            {% endfor %}
+            {% if has_target %}
+              <button type="button" class="nf-chip{% if not dist_plots %} active{% endif %}" data-key="__target__">🎯 Cible : {{ summary.target_class }}</button>
+            {% endif %}
+            {% if has_corr %}
+              <button type="button" class="nf-chip{% if not dist_plots and not has_target %} active{% endif %}" data-key="__corr__">🔗 Corrélations (Pearson)</button>
+            {% endif %}
+          </div>
+          <div class="nf-empty" id="dfEmpty" hidden>Aucune vue ne correspond à cette recherche.</div>
+        </div>
+
+        <div class="nx-stats" id="dxStats"></div>
+
+        <div class="nx-stage">
+          <div id="dxPlot" class="nx-plot"></div>
+          <div class="nx-loading" id="dxLoading" hidden>Chargement…</div>
+        </div>
+
+        <div class="nx-error" id="dxError" hidden></div>
+
+        <!-- Fallback : images statiques si l'API ou Plotly est indisponible -->
+        <div class="plots-grid" id="distFallback" data-no-gallery="1" hidden>
+          {% for p in dist_plots %}
+            <div class="plot-card" data-feature="{{ p.feature }}" hidden>
+              <div class="plot-img-container lightbox-trigger" data-url="{{ p.url }}" data-title="{{ p.title }}">
+                <img src="{{ p.url }}" alt="{{ p.title }}" loading="lazy">
+              </div>
+              <div class="plot-info"><h4 class="plot-title">{{ p.title }}</h4></div>
+            </div>
+          {% endfor %}
+          <div class="plot-card" data-feature="__corr__" hidden>
+            <div class="plot-img-container lightbox-trigger" data-url="/results/{{ active_dataset }}/plots/correlation_heatmap.png" data-title="Pearson Correlation Heatmap">
+              <img src="/results/{{ active_dataset }}/plots/correlation_heatmap.png" alt="Correlation Heatmap" loading="lazy">
+            </div>
+            <div class="plot-info"><h4 class="plot-title">Pearson Correlation Heatmap</h4></div>
+          </div>
+          <div class="plot-card" data-feature="__target__" hidden>
+            <div class="plot-img-container lightbox-trigger" data-url="/results/{{ active_dataset }}/plots/class_balance.png" data-title="Target Class Balance">
+              <img src="/results/{{ active_dataset }}/plots/class_balance.png" alt="Target Class Balance" loading="lazy">
+            </div>
+            <div class="plot-info"><h4 class="plot-title">Target Class Balance</h4></div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          var root = document.getElementById("distExplorer"); if (!root) return;
+          var $ = function (id) { return document.getElementById(id); };
+          var dataset = root.getAttribute("data-dataset");
+          var chips = $("dfChips"), search = $("dfSearch"), empty = $("dfEmpty");
+          var plotDiv = $("dxPlot"), loading = $("dxLoading"), statsEl = $("dxStats"), grid = $("distFallback");
+          var first = chips.querySelector(".nf-chip.active");
+          var active = first ? first.getAttribute("data-key") : null;
+          var seq = 0, firstLoad = true, last = null;
+          var txt = "#475569", grid_c = "rgba(15,23,42,.09)";
+          var cfg = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] };
+
+          function esc(s) { return String(s === null || s === undefined ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+          function card(label, value, cls) { return '<div' + (cls ? ' class="' + cls + '"' : '') + '><small>' + label + '</small><b>' + value + '</b></div>'; }
+          function shape(s) {
+            var a = Math.abs(s);
+            if (a < 0.5) return "Quasi symétrique";
+            return (a < 1 ? "Asymétrie modérée" : "Forte asymétrie") + (s > 0 ? " à droite" : " à gauche");
+          }
+
+          function showStage(on) { plotDiv.parentNode.hidden = !on; statsEl.hidden = !on; }
+          function fallback(reason) {
+            var err = $("dxError");
+            err.innerHTML = "⚠️ Graphique interactif indisponible : <b></b> <button type='button' id='dxRetry'>Réessayer</button>";
+            err.querySelector("b").textContent = reason || "erreur inconnue"; err.hidden = false;
+            $("dxRetry").onclick = function () { err.hidden = true; grid.hidden = true; showStage(true); firstLoad = true; load(); };
+            showStage(false); grid.hidden = false;
+            [].forEach.call(grid.querySelectorAll(".plot-card"), function (c) { c.hidden = c.getAttribute("data-feature") !== active; });
+          }
+
+          function renderVariable(d) {
+            statsEl.innerHTML =
+              card("Variable", esc(d.column)) + card("Observations", d.n.toLocaleString()) +
+              card("Moyenne · Médiane", d.mean + " · " + d.median) + card("Écart-type", d.std) +
+              card("Asymétrie (skew)", d.skew + ' <em>(' + shape(d.skew) + ')</em>') + card("Kurtosis", d.kurtosis) +
+              card("Min · Max", d.min + " · " + d.max) + card("Valeurs distinctes", d.n_unique.toLocaleString());
+            var traces = [{ type: "bar", x: d.hist_x, y: d.hist_y.map(function (c) { return c / d.n * 100; }), customdata: d.hist_y, width: d.hist_w, name: "Histogramme",
+              marker: { color: "rgba(56,189,248,.65)" }, hovertemplate: "%{x}<br>%{y:.2f} %<br>%{customdata} valeurs<extra></extra>" }];
+            if (d.kde_x) traces.push({ type: "scatter", mode: "lines", x: d.kde_x, y: d.kde_y, name: "Densité KDE", line: { color: "#0ea5e9", width: 2.6 }, fill: "tozeroy", fillcolor: "rgba(167,139,250,.12)", hovertemplate: "%{x}<br>%{y:.2f} %<extra>KDE</extra>" });
+            var vline = function (x, color, dash) { return { type: "line", xref: "x", x0: x, x1: x, yref: "paper", y0: 0, y1: 1, line: { color: color, width: 1.5, dash: dash } }; };
+            Plotly.react(plotDiv, traces, {
+              height: 420, margin: { l: 60, r: 20, t: 40, b: 45 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+              font: { color: txt, family: "inherit", size: 12 }, hovermode: "closest", dragmode: "zoom", bargap: 0,
+              legend: { orientation: "h", y: 1.12, x: 0 },
+              xaxis: { gridcolor: grid_c, zeroline: false, title: { text: d.column, font: { size: 11 } } },
+              yaxis: { gridcolor: grid_c, ticksuffix: " %", title: { text: "% des valeurs", font: { size: 11 } } },
+              shapes: [vline(d.mean, "#fbbf24", "dash"), vline(d.median, "#34d399", "dot")],
+              annotations: [
+                { x: d.mean, y: 1, xref: "x", yref: "paper", text: "Moyenne " + d.mean, showarrow: false, xanchor: "left", yanchor: "bottom", font: { size: 11, color: "#fbbf24" } },
+                { x: d.median, y: 0.93, xref: "x", yref: "paper", text: "Médiane " + d.median, showarrow: false, xanchor: "right", yanchor: "bottom", font: { size: 11, color: "#34d399" } }
+              ]
+            }, cfg);
+          }
+
+          function renderCorr(d) {
+            var pos = d.pairs.filter(function (p) { return p.r > 0; })[0], neg = d.pairs.filter(function (p) { return p.r < 0; })[0];
+            var strong = d.pairs.filter(function (p) { return Math.abs(p.r) >= 0.7; }).length;
+            statsEl.innerHTML =
+              card("Variables", d.labels.length) +
+              card("Plus forte corrélation +", pos ? esc(pos.a) + " ↔ " + esc(pos.b) + ' <em>(' + pos.r + ')</em>' : "–") +
+              card("Plus forte corrélation −", neg ? esc(neg.a) + " ↔ " + esc(neg.b) + ' <em>(' + neg.r + ')</em>' : "–") +
+              card("Paires |r| ≥ 0.7", strong, strong ? "hot" : "");
+            var n = d.labels.length;
+            Plotly.react(plotDiv, [{
+              type: "heatmap", x: d.labels, y: d.labels, z: d.z, zmin: -1, zmax: 1, colorscale: "RdBu",
+              text: d.annotate ? d.z.map(function (row) { return row.map(function (v) { return v === null ? "" : v.toFixed(2); }); }) : undefined,
+              texttemplate: d.annotate ? "%{text}" : undefined, textfont: { size: 11 }, xgap: 1, ygap: 1,
+              colorbar: { title: { text: "r" }, thickness: 14 }, hovertemplate: "%{y} ↔ %{x}<br>r = %{z}<extra></extra>"
+            }], {
+              height: Math.min(720, Math.max(380, 90 + n * 48)), margin: { l: 150, r: 20, t: 20, b: 120 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+              font: { color: txt, family: "inherit", size: 12 }, xaxis: { tickangle: -40, automargin: true }, yaxis: { autorange: "reversed", automargin: true }
+            }, cfg);
+          }
+
+          function renderTarget(d) {
+            var maxI = d.counts.indexOf(Math.max.apply(null, d.counts)), minI = d.counts.indexOf(Math.min.apply(null, d.counts));
+            var ratio = d.counts[minI] ? (d.counts[maxI] / d.counts[minI]).toFixed(1) : "∞";
+            statsEl.innerHTML =
+              card("Variable cible", esc(d.target)) + card("Classes", d.labels.length) +
+              card("Classe majoritaire", esc(d.labels[maxI]) + ' <em>(' + d.percents[maxI] + ' %)</em>') +
+              card("Déséquilibre (max / min)", "× " + ratio, ratio === "∞" || +ratio > 3 ? "hot" : "");
+            Plotly.react(plotDiv, [{ type: "bar", x: d.labels, y: d.percents, customdata: d.counts, marker: { color: "#2563eb" },
+              text: d.percents.map(function (p) { return p + " %"; }), textposition: "outside", hovertemplate: "%{x}<br>%{y} %<br>%{customdata} observations<extra></extra>" }], {
+              height: 420, margin: { l: 60, r: 20, t: 30, b: 80 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+              font: { color: txt, family: "inherit", size: 12 }, xaxis: { type: "category", automargin: true },
+              yaxis: { gridcolor: grid_c, ticksuffix: " %", title: { text: "% des observations", font: { size: 11 } } }
+            }, cfg);
+          }
+
+          function render(d) {
+            last = d;
+            if (d.kind === "correlation") renderCorr(d); else if (d.kind === "target") renderTarget(d); else renderVariable(d);
+          }
+
+          function load() {
+            if (!active) return;
+            if (typeof Plotly === "undefined") { fallback("Plotly n\u2019est pas chargé (vérifiez que static/js/plotly.min.js existe)"); return; }
+            var my = ++seq;
+            loading.hidden = false;
+            fetch("/api/distribution-plot/" + encodeURIComponent(dataset) + "/" + encodeURIComponent(active))
+              .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || r.status); return j; }); })
+              .then(function (d) { if (my === seq) { loading.hidden = true; Plotly.purge(plotDiv); render(d); firstLoad = false; } })
+              .catch(function (e) { if (my !== seq) return; loading.hidden = true; console.warn("Distribution API:", e); if (firstLoad || !last) fallback(e.message || String(e)); });
+          }
+
+          chips.addEventListener("click", function (e) {
+            var b = e.target.closest(".nf-chip"); if (!b) return;
+            active = b.getAttribute("data-key");
+            [].forEach.call(chips.querySelectorAll(".nf-chip"), function (c) { c.classList.toggle("active", c === b); });
+            if (!grid.hidden) { var er = $("dxError").querySelector("b"); fallback(er ? er.textContent : ""); } else load();
+          });
+          search.addEventListener("input", function () {
+            var q = search.value.trim().toLowerCase(), n = 0;
+            [].forEach.call(chips.querySelectorAll(".nf-chip"), function (c) { var ok = !q || c.textContent.toLowerCase().indexOf(q) >= 0; c.hidden = !ok; if (ok) n++; });
+            $("dfShown").textContent = n; empty.hidden = n > 0;
+          });
+
+          load();
+        })();
+      </script>
+      {% else %}
+      <div class="section-card" style="margin-top: 1.75rem;">
+        <p class="section-desc">Aucune distribution disponible pour ce dataset.</p>
+      </div>
+      {% endif %}
+
+    <!-- CASE 5: FEATURE IMPORTANCE -->
+    {% elif current_case.id == 'feature-importance' %}
+
+      {% set num_cols = summary.numeric_columns or [] %}
+      {% set default_target = summary.target_class if (summary.target_class in num_cols) else (num_cols[0] if num_cols else None) %}
+
+      {% if feature_importance %}
+      <script src="{{ url_for('static', filename='js/plotly.min.js') }}"></script>
+      <div class="section-card" style="margin-top: 1.75rem;" id="fiExplorer" data-dataset="{{ active_dataset }}" data-target="{{ default_target or '' }}">
+
+        <!-- Choix de la méthode, puis de la cible -->
+        <div class="nf-panel">
+          <div class="nf-chips" id="fiMode" role="tablist" style="max-height:none;">
+            <button type="button" class="nf-chip active" data-mode="anova">📊 ANOVA (test F)</button>
+            <button type="button" class="nf-chip" data-mode="corr">🔗 Corrélation avec une cible</button>
+          </div>
+          <div id="fiAnovaWrap" style="margin-top: .9rem;"{% if not anova_targets %} hidden{% endif %}>
+            <div class="nf-count" style="margin-bottom: .5rem;"><span>🎯 Cible catégorielle</span></div>
+            <div class="nf-chips" id="fiAnovaTargets">
+              {% for col in anova_targets %}
+                <button type="button" class="nf-chip{% if col == anova_default %} active{% endif %}" data-key="{{ col }}">{{ col }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <div id="fiTargetsWrap" hidden style="margin-top: .9rem;">
+            <div class="nf-count" style="margin-bottom: .5rem;"><span>🎯 Variable cible</span></div>
+            <div class="nf-chips" id="fiTargets">
+              {% for col in num_cols %}
+                <button type="button" class="nf-chip{% if col == default_target %} active{% endif %}" data-key="{{ col }}">{{ col }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="nx-stage">
+          <div id="fiPlot" class="nx-plot" style="min-height: 260px;"></div>
+          <div class="nx-loading" id="fiLoading" hidden>Chargement…</div>
+        </div>
+        <div class="nx-error" id="fiError" hidden></div>
+      </div>
+
+      <script>
+        (function () {
+          var root = document.getElementById("fiExplorer"); if (!root) return;
+          var $ = function (id) { return document.getElementById(id); };
+          var dataset = root.getAttribute("data-dataset");
+          var plotDiv = $("fiPlot"), loading = $("fiLoading"), errEl = $("fiError");
+          var mode = "anova", target = root.getAttribute("data-target") || null, seq = 0;
+          var aTarget = {{ (anova_default or '')|tojson }};
+          var txt = "#475569", grid_c = "rgba(15,23,42,.09)";
+          var cfg = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] };
+          var base = { paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", font: { color: txt, family: "inherit", size: 12 }, hovermode: "closest" };
+
+          function h(n) { return Math.max(260, 70 + 38 * n); }
+          function varColor(p) { return p >= 70 ? "#34d399" : (p >= 30 ? "#fbbf24" : (p > 0 ? "#fb923c" : "#f87171")); }
+
+          function fmtP(p) { return p === null || p === undefined ? "n/d" : (p < 1e-4 ? "< 0.0001" : p.toFixed(4)); }
+          function drawAnova(d) {
+            errEl.hidden = true;
+            var f = d.features;
+            Plotly.react(plotDiv, [{
+              type: "bar", orientation: "h", y: f.map(function (x) { return x.name; }), x: f.map(function (x) { return x.score_pct; }),
+              customdata: f.map(function (x) { return [x.f, fmtP(x.p), x.eta2]; }),
+              text: f.map(function (x) { return x.score_pct + " %"; }), textposition: "outside", cliponaxis: false,
+              marker: { color: f.map(function (x) { return varColor(x.score_pct); }) },
+              hovertemplate: "<b>%{y}</b><br>Score : %{x} %<br>F = %{customdata[0]}<br>p-value = %{customdata[1]}<br>η² = %{customdata[2]}<extra></extra>"
+            }], Object.assign({}, base, {
+              height: h(f.length), margin: { l: 170, r: 60, t: 20, b: 45 },
+              xaxis: { range: [0, 112], gridcolor: grid_c, ticksuffix: " %", title: { text: "Statistique F normalisée (ANOVA) — cible : " + d.target + " (" + d.n_classes + " classes)", font: { size: 11 } } },
+              yaxis: { autorange: "reversed", automargin: true }
+            }), cfg);
+          }
+
+          function drawCorr(d) {
+            errEl.hidden = true;
+            var f = d.features, vline = function (x) { return { type: "line", xref: "x", x0: x, x1: x, yref: "paper", y0: 0, y1: 1, line: { color: "rgba(15,23,42,.35)", width: 1, dash: "dot" } }; };
+            var tag = function (x, t) { return { x: x, y: 1, xref: "x", yref: "paper", text: t, showarrow: false, yanchor: "bottom", xanchor: "left", font: { size: 10, color: "#7f8aa3" } }; };
+            Plotly.react(plotDiv, [{
+              type: "bar", orientation: "h", y: f.map(function (x) { return x.name; }), x: f.map(function (x) { return x.corr_pct; }),
+              customdata: f.map(function (x) { return [x.r, x.strength]; }),
+              text: f.map(function (x) { return x.corr_pct + " %"; }), textposition: "outside", cliponaxis: false,
+              marker: { color: f.map(function (x) { return x.color; }) },
+              hovertemplate: "<b>%{y}</b><br>|r| = %{x} %<br>r = %{customdata[0]}<br>%{customdata[1]}<extra></extra>"
+            }], Object.assign({}, base, {
+              height: h(f.length), margin: { l: 170, r: 60, t: 30, b: 45 },
+              xaxis: { range: [0, 112], gridcolor: grid_c, ticksuffix: " %", title: { text: "|r| avec " + d.target, font: { size: 11 } } },
+              yaxis: { autorange: "reversed", automargin: true },
+              shapes: [vline(20), vline(40), vline(70)],
+              annotations: [tag(20, "faible"), tag(40, "modérée"), tag(70, "forte")]
+            }), cfg);
+          }
+
+          function fail(msg) {
+            errEl.innerHTML = "⚠️ Graphique indisponible : <b></b> <button type='button' id='fiRetry'>Réessayer</button>";
+            errEl.querySelector("b").textContent = msg || "erreur inconnue"; errEl.hidden = false;
+            $("fiRetry").onclick = function () { errEl.hidden = true; refresh(); };
+          }
+
+          function refresh() {
+            if (typeof Plotly === "undefined") { fail("Plotly n\u2019est pas chargé (vérifiez que static/js/plotly.min.js existe)"); return; }
+            if (mode === "anova") {
+              if (!aTarget) { Plotly.purge(plotDiv); fail("Aucune colonne catégorielle (2 à 30 classes) pour servir de cible à l\u2019ANOVA."); return; }
+              var ma = ++seq; loading.hidden = false;
+              fetch("/api/anova/" + encodeURIComponent(dataset) + "/" + encodeURIComponent(aTarget))
+                .then(function (r) { return r.json().then(function (j) { if (!r.ok || j.status !== "ok") throw new Error(j.message || r.status); return j; }); })
+                .then(function (d) { if (ma === seq) { loading.hidden = true; d.features.length ? drawAnova(d) : fail("Aucune variable numérique à tester."); } })
+                .catch(function (e) { if (ma !== seq) return; loading.hidden = true; fail(e.message || String(e)); });
+              return;
+            }
+            if (!target) { Plotly.purge(plotDiv); fail("Aucune variable numérique à utiliser comme cible."); return; }
+            var my = ++seq; loading.hidden = false;
+            fetch("/api/correlation-target/" + encodeURIComponent(dataset) + "/" + encodeURIComponent(target))
+              .then(function (r) { return r.json().then(function (j) { if (!r.ok || j.status !== "ok") throw new Error(j.message || r.status); return j; }); })
+              .then(function (d) { if (my === seq) { loading.hidden = true; d.features.length ? drawCorr(d) : fail("Pas assez de variables pour calculer des corrélations."); } })
+              .catch(function (e) { if (my !== seq) return; loading.hidden = true; fail(e.message || String(e)); });
+          }
+
+          $("fiMode").addEventListener("click", function (e) {
+            var b = e.target.closest(".nf-chip"); if (!b) return;
+            mode = b.getAttribute("data-mode");
+            [].forEach.call($("fiMode").querySelectorAll(".nf-chip"), function (c) { c.classList.toggle("active", c === b); });
+            $("fiTargetsWrap").hidden = mode !== "corr";
+            $("fiAnovaWrap").hidden = mode !== "anova" || !aTarget;
+            refresh();
+          });
+          $("fiAnovaTargets").addEventListener("click", function (e) {
+            var b = e.target.closest(".nf-chip"); if (!b) return;
+            aTarget = b.getAttribute("data-key");
+            [].forEach.call($("fiAnovaTargets").querySelectorAll(".nf-chip"), function (c) { c.classList.toggle("active", c === b); });
+            refresh();
+          });
+          $("fiTargets").addEventListener("click", function (e) {
+            var b = e.target.closest(".nf-chip"); if (!b) return;
+            target = b.getAttribute("data-key");
+            [].forEach.call($("fiTargets").querySelectorAll(".nf-chip"), function (c) { c.classList.toggle("active", c === b); });
+            refresh();
+          });
+
+          refresh();
+        })();
+      </script>
+      {% else %}
+      <div class="section-card" style="margin-top: 1.75rem;">
+        <p class="section-desc">Aucune variable numérique trouvée pour calculer l'importance des variables.</p>
+      </div>
+      {% endif %}
+
+    {% endif %}
+
+  </main>
+</div>
+</div>
+
+  <!-- ========================================================================
+       FULL-SCREEN LIGHTBOX MODAL
+       ======================================================================== -->
+  <div id="lightboxModal" class="modal-overlay">
+    <div class="lightbox-content">
+      <div class="lightbox-header">
+        <h3 id="lightboxTitle" class="lightbox-title">Aperçu du Graphique</h3>
+        <button id="lightboxClose" class="lightbox-close">&times;</button>
+      </div>
+      <div class="lightbox-body">
+        <img id="lightboxImage" src="" alt="Enlarged Plot">
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/ai-interpret.js') }}"></script>
+  {% include 'components/fx.html' %}
+</body>
+</html>

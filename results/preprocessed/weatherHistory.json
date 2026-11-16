@@ -1,0 +1,136 @@
+{
+  "dataset": "weatherHistory",
+  "created_at": "2026-11-07T13:21:21",
+  "config": {
+    "drop_duplicates": true,
+    "drop_useless": true,
+    "missing_col_threshold": 60.0,
+    "num_missing": "knn",
+    "knn_k": 5,
+    "cat_missing": "mode",
+    "outliers": "clip",
+    "outlier_method": "iqr",
+    "outlier_k": 1.5,
+    "smooth_window": 0,
+    "encoding": "target",
+    "te_smoothing": 10.0,
+    "max_onehot": 10,
+    "balance": true,
+    "smote_k": 5,
+    "encode_target": true,
+    "target": "Precip Type",
+    "drop_columns": []
+  },
+  "before": {
+    "rows": 96453,
+    "cols": 12,
+    "missing": 517
+  },
+  "after": {
+    "rows": 170400,
+    "cols": 11,
+    "missing": 0
+  },
+  "steps": [
+    {
+      "key": "raw",
+      "label": "Données brutes",
+      "detail": "",
+      "rows": 96453,
+      "cols": 12,
+      "missing": 517
+    },
+    {
+      "key": "duplicates",
+      "label": "Doublons",
+      "detail": "24 supprimés",
+      "rows": 96429,
+      "cols": 12,
+      "missing": 517
+    },
+    {
+      "key": "useless",
+      "label": "Colonnes inutiles",
+      "detail": "1 constante : Loud Cover",
+      "rows": 96429,
+      "cols": 11,
+      "missing": 517
+    },
+    {
+      "key": "target_na",
+      "label": "Cible manquante",
+      "detail": "517 lignes supprimées",
+      "rows": 95912,
+      "cols": 11,
+      "missing": 0
+    },
+    {
+      "key": "missing",
+      "label": "Valeurs manquantes",
+      "detail": "aucune",
+      "rows": 95912,
+      "cols": 11,
+      "missing": 0
+    },
+    {
+      "key": "outliers",
+      "label": "Outliers",
+      "detail": "7541 écrêtées (IQR 1.5)",
+      "rows": 95912,
+      "cols": 11,
+      "missing": 0
+    },
+    {
+      "key": "encoding",
+      "label": "Encodage",
+      "detail": "2 colonnes en target encoding (lissage 10, 5 plis) → 11 colonnes",
+      "rows": 95912,
+      "cols": 11,
+      "missing": 0
+    },
+    {
+      "key": "target_enc",
+      "label": "Cible encodée",
+      "detail": "2 classes",
+      "rows": 95912,
+      "cols": 11,
+      "missing": 0
+    },
+    {
+      "key": "smote",
+      "label": "Déséquilibre des classes",
+      "detail": "SMOTE (k=5) : 74488 lignes synthétiques",
+      "rows": 170400,
+      "cols": 11,
+      "missing": 0
+    }
+  ],
+  "target_mapping": {
+    "rain": 0,
+    "snow": 1
+  },
+  "class_counts": {
+    "before": {
+      "0": 85200,
+      "1": 10712
+    },
+    "after": {
+      "0": 85200,
+      "1": 85200
+    }
+  },
+  "saved": true,
+  "columns": [
+    "Formatted Date",
+    "Precip Type",
+    "Temperature (C)",
+    "Apparent Temperature (C)",
+    "Humidity",
+    "Wind Speed (km/h)",
+    "Wind Bearing (degrees)",
+    "Visibility (km)",
+    "Pressure (millibars)",
+    "Summary",
+    "Daily Summary"
+  ]
+}

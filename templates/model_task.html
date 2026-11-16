@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ 'Régression' if task == 'regression' else 'Classification' }} — {{ active_dataset }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>try{var a=localStorage.getItem('mls.accent');if(a)document.documentElement.dataset.accent=a;if(localStorage.getItem('mls.chartsmode')==='dark')document.documentElement.classList.add('charts-dark')}catch(e){}</script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  <style>
+    .ms-target{margin:0 0 .8rem;padding:.55rem .9rem;border-radius:12px;background:rgb(var(--ac-1) / .08);border:1px solid rgb(var(--ac-1) / .25);font-size:.86rem}
+    .ms-target span{color:var(--text-muted)}
+    .ms-panel{display:none}.ms-panel.active{display:block}
+    .ms-desc{margin:.2rem 0 1rem;color:var(--text-secondary);font-size:.86rem;max-width:80ch}
+    .ms-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin:0 0 1rem}
+    .ms-stat{background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:10px;padding:.6rem .8rem}
+    .ms-stat small{color:var(--text-muted);font-size:.72rem}
+    .ms-stat b{display:block;font-size:1.15rem;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ms-h3{margin:1.4rem 0 .5rem;font-size:1.02rem}
+    .ms-models{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.9rem}
+    .ms-model{display:flex;flex-direction:column;gap:.5rem;padding:.95rem 1.05rem;background:var(--bg-input);border:1.5px solid var(--border-subtle);border-radius:14px;transition:border-color .2s,box-shadow .2s}
+    .ms-model.on{border-color:rgb(var(--ac-1));box-shadow:0 0 0 3px rgb(var(--ac-1) / .15)}
+    .ms-model.na{opacity:.55}
+    .ms-mh{display:flex;align-items:center;gap:.6rem}
+    .ms-mh input{width:17px;height:17px;accent-color:rgb(var(--ac-1))}
+    .ms-mh b{font-size:1rem}.ms-mh code{font-size:.68rem;color:var(--text-muted);margin-left:auto}
+    .ms-model small.d{color:var(--text-muted);font-size:.78rem;line-height:1.4}
+    .ms-pp{display:flex;flex-wrap:wrap;gap:.5rem .9rem;margin-top:.2rem}
+    .ms-pp label{display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--text-secondary)}
+    .ms-pp input,.ms-pp select,.ms-row select{padding:.35rem .5rem;border-radius:9px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-main);font:inherit;font-size:.8rem}
+    .ms-pp input{width:5.6rem}
+    .ms-models.tuned .ms-pp{opacity:.4;pointer-events:none}
+    .ms-lib{font-size:.76rem;color:#b45309}
+    .ms-row{display:flex;gap:1.4rem;flex-wrap:wrap;align-items:center;margin-top:1rem;font-size:.84rem;color:var(--text-secondary)}
+    .ms-row label{display:flex;align-items:center;gap:.5rem}
+    .ms-actions{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-top:1.2rem}
+    .ms-note{color:var(--text-muted);font-size:.82rem;margin-top:.8rem}
+    .ms-warn{margin:.8rem 0 0;padding:.55rem .8rem;font-size:.82rem;color:#b45309;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:10px}
+    .ms-res{margin-top:1.8rem;padding-top:1.2rem;border-top:1px solid var(--border-subtle)}
+    .ms-table{width:100%;border-collapse:collapse;font-size:.84rem;margin:.6rem 0}
+    .ms-table th,.ms-table td{padding:.55rem .7rem;text-align:right;border-bottom:1px solid var(--border-subtle);font-variant-numeric:tabular-nums}
+    .ms-table th:first-child,.ms-table td:first-child{text-align:left}
+    .ms-table th{font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text-muted);font-weight:700}
+    .ms-table tr.best td{background:rgb(16 185 129 / .08)}
+    .ms-badge{display:inline-block;margin-left:.45rem;font-size:.62rem;font-weight:700;padding:.08rem .45rem;border-radius:999px;color:#047857;background:rgb(16 185 129 / .16)}
+    .ms-badge.of{color:#b45309;background:rgba(245,158,11,.16)}
+    .ms-params-cell{font-size:.72rem;color:var(--text-muted);text-align:left!important;margin-top:.15rem}
+    .ms-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:1rem;margin-top:1rem}
+    .ms-chart{min-height:340px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:12px;padding:.4rem}
+    .ms-tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:.6rem 0}
+    .ms-tab{padding:.3rem .8rem;font:inherit;font-size:.78rem;font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border-subtle);border-radius:999px;cursor:pointer}
+    .ms-tab.on{color:#fff;border-color:transparent;background:linear-gradient(135deg,rgb(var(--ac-1)),rgb(var(--ac-3)))}
+    .cmp-fam{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.9rem;margin:.8rem 0}
+    .cmp-card{padding:1rem 1.1rem;background:var(--bg-input);border:1.5px solid var(--border-subtle);border-radius:14px}
+    .cmp-card.win{border-color:#10b981;box-shadow:0 0 0 3px rgb(16 185 129 / .14)}
+    .cmp-card h3{margin:0 0 .5rem;font-size:1rem;display:flex;align-items:center;gap:.5rem}
+    .cmp-card dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:.25rem .9rem;font-size:.84rem}
+    .cmp-card dt{color:var(--text-muted)}.cmp-card dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+    .cmp-verdict{margin:.8rem 0;padding:.8rem 1rem;border-radius:12px;background:rgb(16 185 129 / .08);border:1px solid rgb(16 185 129 / .3);font-size:.9rem;line-height:1.55}
+    .cmp-verdict p{margin:.2rem 0}
+    .cmp-dot{display:inline-block;width:.65rem;height:.65rem;border-radius:50%;margin-right:.35rem}
+    .cmp-empty{padding:1.4rem;border:1.5px dashed var(--border-subtle);border-radius:14px;color:var(--text-secondary);font-size:.9rem;line-height:1.6}
+    .cmp-empty button{margin:.4rem .5rem 0 0}
+    .acc-list.cmp-acc{display:grid!important;flex-direction:row!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;align-items:start!important;gap:1.1rem!important;max-width:none!important;width:100%}
+    .acc-list.cmp-acc>.acc-item{min-width:0;width:auto;grid-column:auto}
+    .acc-list.cmp-acc>.acc-item[data-sub="ranking"],.acc-list.cmp-acc>.acc-item[data-sub="charts"],.acc-list.cmp-acc>.acc-item[data-sub="conclusion"]{grid-column:1/-1!important}
+    @media(max-width:760px){.acc-list.cmp-acc{grid-template-columns:1fr!important}}
+    .ms-other{display:block;margin:.9rem .2rem 0;font-size:.8rem;color:var(--text-muted);text-decoration:none}
+    .ms-other:hover{color:var(--text-main)}
+  </style>
+</head>
+<body class="case-detail-page eda-page" data-dataset="{{ active_dataset }}" style="margin:0;padding:0;">
+
+  <div style="max-width:1400px;margin:1.5rem auto 0;padding:0 1.5rem;">
+    <div class="topbar" style="margin-bottom:1.25rem;">
+      <a href="{{ url_for('view_phase_detail', dataset_name=active_dataset, phase_name='model') }}" class="btn btn-outline">← Model Selection</a>
+      <div class="dataset-pill"><img class="pill-cover" src="{{ url_for('dataset_cover', name=active_dataset) }}" alt=""><span>Dataset : <strong>{{ active_dataset }}</strong></span></div>
+    </div>
+  </div>
+
+
+  <div class="eda-page-wrapper">
+  {% if error %}
+    <section class="section-card empty-phase">
+      <div class="empty-phase-icon">⚠️</div>
+      <h1 style="margin-top:.8rem;">{{ 'Régression' if task == 'regression' else 'Classification' }} impossible</h1>
+      <p style="max-width:62ch;margin-left:auto;margin-right:auto;">{{ error }}</p>
+      <a href="{{ url_for('view_phase_detail', dataset_name=active_dataset, phase_name='split') }}" class="btn btn-primary">← Étape Split</a>
+    </section>
+  {% else %}
+    <div class="eda-layout">
+
+      <!-- ============ SIDEBAR : familles de modèles ============ -->
+      <aside class="eda-sidebar">
+        <div class="eda-sidebar-section-title"><span>{{ 'Régression' if task == 'regression' else 'Classification' }}</span><span class="eda-sidebar-step-badge">2</span></div>
+        <nav class="eda-nav-list" id="msNav">
+          {% for gid, g in mp.groups.items() %}
+          <a href="#{{ gid }}" class="eda-nav-item {% if loop.first %}active{% endif %}" data-panel="{{ gid }}">
+            <span class="eda-nav-icon">{% if gid == 'individual' %}<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg>{% else %}<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>{% endif %}</span>
+            <div class="eda-nav-text"><span class="eda-nav-title">{{ g.title }}</span><small class="pp-nav-sub">{{ g.sub }}</small></div>
+            <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+          </a>
+          {% endfor %}
+          <a href="#compare" class="eda-nav-item" data-panel="compare">
+            <span class="eda-nav-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"/></svg></span>
+            <div class="eda-nav-text"><span class="eda-nav-title">Comparaison</span><small class="pp-nav-sub">Individuels vs Ensemble</small></div>
+            <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+          </a>
+        </nav>
+      </aside>
+
+      <!-- ============ CONTENU : un panneau à la fois ============ -->
+      <main class="eda-main-content">
+        <div class="eda-content-header" style="margin-bottom:1.5rem;padding-bottom:.75rem;">
+          <div><h1 class="eda-content-title" id="msTitle" style="font-size:1.85rem;"></h1></div>
+        </div>
+
+
+        {% for gid, g in mp.groups.items() %}
+        <section class="ms-panel {% if loop.first %}active{% endif %}" id="panel-{{ gid }}" data-g="{{ gid }}"></section>
+        {% endfor %}
+        <section class="ms-panel" id="panel-compare" data-g="compare"></section>
+      </main>
+    </div>
+  {% endif %}
+  </div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% if not error %}
+<script src="{{ url_for('static', filename='js/plotly.min.js') }}"></script>
+<script>
+(function () {
+  const ds = document.body.dataset.dataset;
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const MP = {{ mp | tojson }};
+  const clf = MP.task === 'classification';
+  const pct = v => v == null ? '—' : (100 * v).toFixed(1) + ' %';
+  const f3 = v => v == null ? '—' : Number(v).toFixed(3);
+  const score = v => clf ? pct(v) : f3(v);
+  const rendered = {};
+
+  /* ---------- panel skeleton ---------- */
+  function paramInput(m, p) {
+    const id = `p-${m.id}-${p.k}`;
+    if (p.type === 'choice')
+      return `<label>${esc(p.label)} <select data-m="${m.id}" data-k="${p.k}">${p.choices.map(c => `<option ${c === p.default ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
+    const step = p.type === 'float' ? 'any' : '1';
+    return `<label>${esc(p.label)} <input type="number" step="${step}" min="${p.min}" max="${p.max}" data-m="${m.id}" data-k="${p.k}" ${p.default == null ? 'placeholder="illimitée"' : `value="${p.default}"`}></label>`;
+  }
+
+  function buildPanel(gid) {
+    const g = MP.groups[gid], box = $('#panel-' + gid);
+    box.innerHTML = `
+      <div class="ms-models" id="models-${gid}">${g.models.map(m => `
+        <div class="ms-model ${m.available ? 'on' : 'na'}" data-m="${m.id}">
+          <div class="ms-mh"><b>${esc(m.name)}</b></div>
+          ${m.available ? `<small class="d">${esc(m.study.short)}</small>
+              ${m.params.filter(p => !m.study.overridden.includes(p.k)).length ? `<div class="ms-pp">${m.params.filter(p => !m.study.overridden.includes(p.k)).map(p => paramInput(m, p)).join('')}</div>` : ''}`
+                        : `<span class="ms-lib">Non disponible dans le Python qui exécute l'application${m.error ? ' (' + esc(m.error) + ')' : ''}. Installez-la avec cette commande, puis redémarrez l'application :<br><code style="user-select:all;word-break:break-all">${esc(m.pip)}</code></span>`}
+        </div>`).join('')}</div>
+      <div class="ms-row">
+        <label>Validation croisée (plis)
+          <select id="cv-${gid}">${MP.cv_choices.map(k => `<option ${k === 5 ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+
+      </div>
+      <div class="ms-actions">
+        <button class="btn btn-primary" id="run-${gid}">Entraîner et comparer</button>
+        <span id="msg-${gid}" style="color:var(--text-muted);font-size:.85rem"></span>
+      </div>
+      <div class="ms-res" id="res-${gid}" style="display:none"></div>`;
+
+    $('#run-' + gid).disabled = !chosen(gid).length;
+    if ($('#tune-' + gid)) $('#tune-' + gid).addEventListener('change', e => $('#models-' + gid).classList.toggle('tuned', e.target.checked));
+    $('#run-' + gid).addEventListener('click', () => run(gid));
+  }
+  const chosen = gid => MP.groups[gid].models.filter(m => m.available).map(m => m.id);
+  function readParams(gid) {
+    const out = {};
+    $$(`#models-${gid} [data-k]`).forEach(el => { (out[el.dataset.m] = out[el.dataset.m] || {})[el.dataset.k] = el.value === '' ? null : el.value; });
+    return out;
+  }
+
+  /* ---------- results ---------- */
+  const PLOT = () => {
+    const dark = document.documentElement.classList.contains('charts-dark');
+    return { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: dark ? '#e2e8f0' : '#334155', size: 12 }, margin: { t: 40, r: 20, b: 50, l: 55 } };
+  };
+  const PCFG = { displayModeBar: false, responsive: true };
+
+  const drawnViz = {};
+  const ICO_RES = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>';
+  const ICO_VIZ = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>';
+
+  function drawViz(gid, r) {
+    const names = r.results.map(m => m.name);
+    Plotly.newPlot('bars-' + gid, [
+      { type: 'bar', name: 'CV (train)', x: names, y: r.results.map(m => m.cv_mean), marker: { color: '#14b8a6' } },
+      { type: 'bar', name: 'Test', x: names, y: r.results.map(m => m.test_score), marker: { color: '#f59e0b' } }
+    ], Object.assign(PLOT(), { barmode: 'group', title: { text: `${r.metric} par modèle`, font: { size: 14 } }, yaxis: { rangemode: 'tozero' }, legend: { orientation: 'h', y: -0.2 } }), PCFG);
+
+    if (clf) {
+      const cm = id => {
+        const m = r.results.find(x => x.id === id), z = m.test.confusion, lab = r.classes.map(String);
+        Plotly.newPlot('det-' + gid, [{ type: 'heatmap', z, x: lab, y: lab, colorscale: 'Blues', showscale: false,
+          text: z.map(row => row.map(String)), texttemplate: '%{text}', hovertemplate: 'Réel %{y}<br>Prédit %{x}<br>%{z}<extra></extra>' }],
+          Object.assign(PLOT(), { title: { text: `Matrice de confusion — ${m.name}`, font: { size: 14 } }, xaxis: { title: 'Prédit', type: 'category' }, yaxis: { title: 'Réel', type: 'category', autorange: 'reversed' } }), PCFG);
+      };
+      cm(r.best);
+      $$(`#tabs-${gid} .ms-tab`).forEach(b => b.addEventListener('click', () => {
+        $$(`#tabs-${gid} .ms-tab`).forEach(x => x.classList.toggle('on', x === b)); cm(b.dataset.m);
+      }));
+    } else if (r.scatter) {
+      const lo = Math.min(...r.scatter.actual, ...r.scatter.pred), hi = Math.max(...r.scatter.actual, ...r.scatter.pred);
+      Plotly.newPlot('det-' + gid, [
+        { type: 'scatter', mode: 'markers', x: r.scatter.actual, y: r.scatter.pred, marker: { size: 5, opacity: .6, color: '#2563eb' }, name: 'Prédictions' },
+        { type: 'scatter', mode: 'lines', x: [lo, hi], y: [lo, hi], line: { dash: 'dash', color: '#94a3b8' }, name: 'Idéal' }
+      ], Object.assign(PLOT(), { title: { text: `Prédit vs réel — ${r.scatter.model}`, font: { size: 14 } }, xaxis: { title: 'Réel' }, yaxis: { title: 'Prédit' }, showlegend: false }), PCFG);
+    }
+    drawnViz[gid] = true;
+  }
+
+
+  /* ---------- modèles individuels : comparaison des variantes ---------- */
+  const ICO_CMP = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"/></svg>';
+  const LEARNER_HINT = { svm: 'Noyaux · C', knn: 'Distances · poids · k', tree: 'Critères · profondeur', rf: 'Nb d\'arbres · variables par split', ada: 'Nb d\'estimateurs · learning rate', xgb: 'Nb d\'arbres · profondeur', cat: 'Itérations · profondeur', lgbm: 'Nb d\'arbres · feuilles' };
+  const xlab = v => v === null ? 'illimitée' : v === 'all' ? 'toutes' : String(v);
+
+  function learnerBody(gid, key, r) {
+    const lr = r.learners[key], fin = r.results.find(m => m.id === key);
+    const ok = lr.variants.filter(v => !v.error).sort((a, b) => (b.cv_mean ?? -1e9) - (a.cv_mean ?? -1e9));
+    const bad = lr.variants.filter(v => v.error);
+    const head2 = clf ? '<th>Accuracy</th><th>F1</th>' : '<th>MAE</th><th>RMSE</th>';
+    const c2 = v => clf ? `<td>${pct(v.test.accuracy)}</td><td>${pct(v.test.f1)}</td>` : `<td>${f3(v.test.mae)}</td><td>${f3(v.test.rmse)}</td>`;
+    const rows = ok.map(v => `<tr class="${v.id === lr.best_variant ? 'best' : ''}">
+        <td><b>${esc(v.label)}</b>${v.id === lr.best_variant ? '<span class="ms-badge">Meilleure variante</span>' : ''}${v.overfit ? '<span class="ms-badge of" title="Score train bien supérieur au score test">Sur-apprentissage</span>' : ''}</td>
+        <td>${score(v.cv_mean)} <small style="color:var(--text-muted)">± ${clf ? (100 * (v.cv_std || 0)).toFixed(1) : f3(v.cv_std)}</small></td>
+        <td>${score(v.train_score)}</td><td>${score(v.test_score)}</td>${c2(v)}<td>${v.seconds} s</td></tr>`).join('');
+    return `
+      <div style="overflow-x:auto"><table class="ms-table"><thead><tr><th>Variante</th><th>CV (${r.config.cv} plis)</th><th>Train</th><th>Test</th>${head2}<th>Durée</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${bad.map(v => `<p class="ms-warn">${esc(v.label)} : échec (${esc(v.error)}).</p>`).join('')}
+      <div class="ms-charts"><div class="ms-chart" id="lv-${gid}-${key}"></div><div class="ms-chart" id="ls-${gid}-${key}"></div></div>
+`;
+  }
+
+  function drawLearner(gid, key, r) {
+    const lr = r.learners[key], ok = lr.variants.filter(v => !v.error).sort((a, b) => (b.cv_mean ?? -1e9) - (a.cv_mean ?? -1e9));
+    const names = ok.map(v => v.label);
+    Plotly.newPlot(`lv-${gid}-${key}`, [
+      { type: 'bar', name: 'Train', x: names, y: ok.map(v => v.train_score), marker: { color: '#94a3b8' } },
+      { type: 'bar', name: 'CV', x: names, y: ok.map(v => v.cv_mean), marker: { color: ok.map(v => v.id === lr.best_variant ? '#10b981' : '#14b8a6') } },
+      { type: 'bar', name: 'Test', x: names, y: ok.map(v => v.test_score), marker: { color: '#f59e0b' } }
+    ], Object.assign(PLOT(), { barmode: 'group', title: { text: `${r.metric} par variante`, font: { size: 14 } }, yaxis: { rangemode: 'tozero' },
+        xaxis: { tickangle: -25, automargin: true }, legend: { orientation: 'h', y: -0.45 }, margin: { t: 40, r: 20, b: 60, l: 55 } }), PCFG);
+    const sw = lr.sweep, pts = sw.points, x = pts.map(p => xlab(p.value)), bi = pts.findIndex(p => p.value === sw.chosen);
+    Plotly.newPlot(`ls-${gid}-${key}`, [
+      { type: 'scatter', mode: 'lines+markers', name: 'Train', x, y: pts.map(p => p.train), line: { color: '#94a3b8', dash: 'dot' }, marker: { size: 7 } },
+      { type: 'scatter', mode: 'lines+markers', name: 'Validation croisée', x, y: pts.map(p => p.cv), line: { color: '#14b8a6', width: 3 }, marker: { size: 8 },
+        error_y: { type: 'data', array: pts.map(p => p.cv_std || 0), visible: true, color: 'rgba(20,184,166,.45)' } },
+      ...(bi >= 0 ? [{ type: 'scatter', mode: 'markers', name: 'Choisi', x: [x[bi]], y: [pts[bi].cv], marker: { size: 16, symbol: 'star', color: '#f59e0b', line: { color: '#fff', width: 1 } } }] : [])
+    ], Object.assign(PLOT(), { title: { text: `${sw.label} — variante « ${lr.best_label} »`, font: { size: 14 } }, xaxis: { title: sw.label, type: 'category' },
+        yaxis: { title: r.metric }, legend: { orientation: 'h', y: -0.25 } }), PCFG);
+  }
+
+  function render(gid, r, autoOpen) {
+    const best = r.results.find(m => m.id === r.best);
+    const head = clf ? '<th>Accuracy</th><th>Précision</th><th>Rappel</th><th>F1</th><th>AUC</th>' : '<th>R²</th><th>MAE</th><th>RMSE</th>';
+    const cells = m => clf
+      ? `<td>${pct(m.test.accuracy)}</td><td>${pct(m.test.precision)}</td><td>${pct(m.test.recall)}</td><td>${pct(m.test.f1)}</td><td>${f3(m.test.roc_auc)}</td>`
+      : `<td>${f3(m.test.r2)}</td><td>${f3(m.test.mae)}</td><td>${f3(m.test.rmse)}</td>`;
+    const rows = r.results.map(m => `<tr class="${m.id === r.best ? 'best' : ''}">
+        <td><b>${esc(m.name)}</b>${m.variant ? ` <span style="color:var(--text-secondary)">· ${esc(m.variant)}</span>` : ''}${m.id === r.best ? '<span class="ms-badge">Meilleur</span>' : ''}${m.overfit ? '<span class="ms-badge of" title="Score train bien supérieur au score test">Sur-apprentissage</span>' : ''}
+          <div class="ms-params-cell">${Object.entries(m.params).map(([k, v]) => `${esc(k)}=${v === null ? 'None' : esc(v)}`).join(' · ')}</div></td>
+        <td>${score(m.cv_mean)} <small style="color:var(--text-muted)">± ${clf ? (100 * (m.cv_std || 0)).toFixed(1) : f3(m.cv_std)}</small></td>
+        <td>${score(m.train_score)}</td>${cells(m)}<td>${m.seconds} s</td></tr>`).join('');
+    const box = $('#res-' + gid);
+    box.style.display = '';
+    Object.keys(drawnViz).filter(k => k.startsWith(gid) && k !== gid).forEach(k => delete drawnViz[k]);
+    drawnViz[gid] = false;
+    const L = r.learners ? r.results.map(m => m.id).filter(k => r.learners[k]) : [];
+    const learnerItems = L.map(k => `<div class="acc-item" data-sub="learner-${k}" data-key="${k}">
+        <button type="button" class="acc-head" aria-expanded="false"><span class="acc-ico">${ICO_CMP}</span>
+          <span class="acc-text"><span class="acc-title">${esc(r.learners[k].name)}</span><span class="acc-hint">${esc(LEARNER_HINT[k] || '')}</span></span><span class="acc-chev" aria-hidden="true">›</span></button>
+        <div class="acc-body" hidden>${learnerBody(gid, k, r)}</div></div>`).join('');
+    box.innerHTML = `<div class="acc-list" style="display:flex;flex-direction:column;max-width:none">
+      ${learnerItems}
+      <div class="acc-item" data-sub="results">
+        <button type="button" class="acc-head" aria-expanded="false"><span class="acc-ico">${ICO_RES}</span>
+          <span class="acc-text"><span class="acc-title">${L.length ? 'Résultat général — les ' + L.length + ' modèles' : 'Résultats'}</span><span class="acc-hint">${L.length ? 'Meilleurs modèles face à face' : 'Tableau des scores par modèle'}</span></span><span class="acc-chev" aria-hidden="true">›</span></button>
+        <div class="acc-body" hidden>
+          <p style="color:var(--text-secondary);font-size:.88rem;margin:.2rem 0 .6rem">
+            Meilleur modèle selon la validation croisée (${esc(r.metric)}) : <b>${esc(best.name)}</b>, avec ${score(best.test_score)} sur le jeu de test (${r.n_test} lignes jamais vues).</p>
+          <div style="overflow-x:auto"><table class="ms-table">
+            <thead><tr><th>Modèle</th><th>CV (${r.config.cv} plis)</th><th>Train</th>${head}<th>Durée</th></tr></thead>
+            <tbody>${rows}</tbody></table></div>
+        </div>
+      </div>
+      <div class="acc-item" data-sub="viz">
+        <button type="button" class="acc-head" aria-expanded="false"><span class="acc-ico">${ICO_VIZ}</span>
+          <span class="acc-text"><span class="acc-title">Visualisations</span><span class="acc-hint">${clf ? 'Scores et matrices de confusion' : 'Scores et prédit vs réel'}</span></span><span class="acc-chev" aria-hidden="true">›</span></button>
+        <div class="acc-body" hidden>
+          <div class="ms-charts"><div class="ms-chart" id="bars-${gid}"></div><div class="ms-chart" id="det-${gid}"></div></div>
+          ${clf ? `<div class="ms-tabs" id="tabs-${gid}">${r.results.map(m => `<button class="ms-tab ${m.id === r.best ? 'on' : ''}" data-m="${m.id}">Matrice : ${esc(m.name)}</button>`).join('')}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+
+    const setOpen = (item, open) => {
+      item.classList.toggle('open', open);
+      item.querySelector('.acc-head').setAttribute('aria-expanded', open ? 'true' : 'false');
+      item.querySelector('.acc-body').hidden = !open;
+      if (open && item.dataset.key) {
+        const k = item.dataset.key;
+        if (!drawnViz[gid + k]) { drawLearner(gid, k, r); drawnViz[gid + k] = true; }
+        else [`lv-${gid}-${k}`, `ls-${gid}-${k}`].forEach(id => { const el = document.getElementById(id); if (el) Plotly.Plots.resize(el); });
+      }
+      if (open && item.dataset.sub === 'viz') {          // Plotly a besoin d'un conteneur visible
+        if (!drawnViz[gid]) drawViz(gid, r);
+        else ['bars-', 'det-'].forEach(p => { const el = document.getElementById(p + gid); if (el) Plotly.Plots.resize(el); });
+      }
+    };
+    $$('#res-' + gid + ' .acc-item').forEach(item => item.querySelector('.acc-head').addEventListener('click', () => setOpen(item, !item.classList.contains('open'))));
+    if (autoOpen) setOpen(box.querySelector('[data-sub="results"]'), true);
+    rendered[gid] = true;
+  }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function run(gid) {
+    const btn = $('#run-' + gid), msg = $('#msg-' + gid);
+    btn.disabled = true; msg.textContent = 'Démarrage…';
+    try {
+      const res = await fetch(`/api/model/${encodeURIComponent(ds)}/run`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: MP.task, group: gid, models: chosen(gid), cv: +$('#cv-' + gid).value, tune: $('#tune-' + gid) ? $('#tune-' + gid).checked : false, params: readParams(gid) })
+      });
+      const j = await res.json();
+      if (!res.ok || !j.job_id) throw new Error(j.message || 'Erreur');
+      for (;;) {                                        // suivi de la tâche en arrière-plan
+        await sleep(1000);
+        const s = await (await fetch(`/api/model/${encodeURIComponent(ds)}/status/${j.job_id}`)).json();
+        if (s.status === 'running') {
+          msg.textContent = `Entraînement… ${s.done}/${s.total}${s.current ? ' · ' + s.current : ''} (${s.elapsed} s)`;
+        } else if (s.status === 'done') {
+          msg.textContent = `✓ Terminé en ${s.elapsed} s`;
+          MP.groups[gid].saved = s.result;
+          render(gid, s.result, true);
+          $('#res-' + gid).scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        } else throw new Error(s.message || 'Erreur');
+      }
+    } catch (e) { msg.textContent = e.message; }
+    btn.disabled = !chosen(gid).length;
+  }
+
+  /* ---------- comparaison individuels vs ensemble ---------- */
+  const FAM = { individual: { label: 'Modèles individuels', color: '#14b8a6' }, ensemble: { label: 'Ensemble learning', color: '#2563eb' } };
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const diff = (a, b) => clf ? (100 * (a - b)).toFixed(1) + ' pts' : (a - b).toFixed(3);
+
+  const CMP_SUBS = { individual: 'Modèles individuels', ensemble: 'Ensemble learning', ranking: 'Classement général', charts: 'Visualisations', conclusion: 'Conclusion' };
+
+  function renderCompare() {
+    const box = $('#panel-compare');
+    const S = { individual: MP.groups.individual.saved, ensemble: MP.groups.ensemble.saved };
+    const missing = Object.keys(S).filter(k => !S[k]);
+    if (missing.length) {
+      box.innerHTML = `<div class="cmp-empty"><b>Comparaison impossible pour l'instant.</b><br>
+        Il faut d'abord entraîner les deux familles (avec les mêmes réglages de validation croisée) :
+        ${missing.map(k => `<br>• ${esc(FAM[k].label)} : pas encore entraîné`).join('')}<br>
+        ${missing.map(k => `<button class="btn btn-primary" data-go="${k}">Aller à « ${esc(FAM[k].label)} »</button>`).join('')}</div>`;
+      $$('#panel-compare [data-go]').forEach(b => b.addEventListener('click', () => { history.replaceState(null, '', '#' + b.dataset.go); show(b.dataset.go); }));
+      return;
+    }
+    const all = [];
+    Object.keys(S).forEach(f => S[f].results.forEach(m => all.push({ ...m, fam: f })));
+    all.sort((a, b) => (b.cv_mean ?? -1e9) - (a.cv_mean ?? -1e9));
+    const best = f => all.find(m => m.fam === f);
+    const stat = f => {
+      const ms = all.filter(m => m.fam === f);
+      return { best: best(f), n: ms.length, meanTest: avg(ms.map(m => m.test_score).filter(v => v != null)),
+               meanTime: avg(ms.map(m => m.seconds)), totalTime: ms.reduce((s, m) => s + m.seconds, 0), overfit: ms.filter(m => m.overfit).length };
+    };
+    const st = { individual: stat('individual'), ensemble: stat('ensemble') };
+    const winner = (st.ensemble.best.cv_mean ?? -1e9) >= (st.individual.best.cv_mean ?? -1e9) ? 'ensemble' : 'individual';
+    const loser = winner === 'ensemble' ? 'individual' : 'ensemble';
+    const W = st[winner].best, L = st[loser].best;
+    const gapTest = (W.test_score ?? 0) - (L.test_score ?? 0);
+    const faster = st.individual.meanTime < st.ensemble.meanTime ? 'individual' : 'ensemble';
+    const ratio = Math.max(st.individual.meanTime, st.ensemble.meanTime) / Math.max(0.01, Math.min(st.individual.meanTime, st.ensemble.meanTime));
+
+    const famCard = f => `<div class="cmp-card ${f === winner ? 'win' : ''}">
+        <h3><span class="cmp-dot" style="background:${FAM[f].color}"></span>${esc(FAM[f].label)}${f === winner ? '<span class="ms-badge">Gagnant</span>' : ''}</h3>
+        <dl><dt>Meilleur modèle</dt><dd><b>${esc(st[f].best.name)}</b></dd>
+            <dt>CV (classement)</dt><dd>${score(st[f].best.cv_mean)}</dd>
+            <dt>Score test</dt><dd>${score(st[f].best.test_score)}</dd>
+            <dt>Score test moyen (${st[f].n} modèles)</dt><dd>${score(st[f].meanTest)}</dd>
+            <dt>Durée moyenne / modèle</dt><dd>${st[f].meanTime.toFixed(1)} s</dd>
+            <dt>Durée totale</dt><dd>${st[f].totalTime.toFixed(1)} s</dd>
+            <dt>Sur-apprentissage</dt><dd>${st[f].overfit} modèle(s)</dd></dl></div>`;
+
+    const head = clf ? '<th>Accuracy</th><th>F1</th>' : '<th>R²</th><th>RMSE</th>';
+    const cells = m => clf ? `<td>${pct(m.test.accuracy)}</td><td>${pct(m.test.f1)}</td>` : `<td>${f3(m.test.r2)}</td><td>${f3(m.test.rmse)}</td>`;
+    const rows = all.map((m, i) => `<tr class="${i === 0 ? 'best' : ''}">
+        <td>${i + 1}</td><td><b>${esc(m.label || m.name)}</b>${i === 0 ? '<span class="ms-badge">Meilleur global</span>' : ''}${m.overfit ? '<span class="ms-badge of">Sur-apprentissage</span>' : ''}</td>
+        <td><span class="cmp-dot" style="background:${FAM[m.fam].color}"></span>${esc(FAM[m.fam].label)}</td>
+        <td>${score(m.cv_mean)}</td><td>${score(m.train_score)}</td><td>${score(m.test_score)}</td>${cells(m)}<td>${m.seconds} s</td></tr>`).join('');
+
+    const PARTS = {
+      individual: `<div class="cmp-fam">${famCard('individual')}</div>`,
+      ensemble: `<div class="cmp-fam">${famCard('ensemble')}</div>`,
+      ranking: `
+      <h3 class="ms-h3">Classement général (${esc(S.individual.metric)} en validation croisée)</h3>
+      <div style="overflow-x:auto"><table class="ms-table">
+        <thead><tr><th>#</th><th>Modèle</th><th>Famille</th><th>CV</th><th>Train</th><th>Test</th>${head}<th>Durée</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      <p class="ms-note">Les deux familles sont comparées sur le même train / test. Pour une comparaison équitable, entraînez-les avec les mêmes réglages (plis de validation croisée, optimisation activée ou non).</p>`,
+      charts: `
+      <div class="ms-charts"><div class="ms-chart" id="cmp-bars"></div><div class="ms-chart" id="cmp-time"></div></div>`,
+      conclusion: `
+      <div class="cmp-verdict">
+        <p>🏆 <b>${esc(FAM[winner].label)}</b> l'emporte : <b>${esc(W.name)}</b> (${esc(MP.groups[winner].title)}) obtient ${score(W.cv_mean)} en validation croisée et ${score(W.test_score)} sur le test,
+        contre ${score(L.cv_mean)} / ${score(L.test_score)} pour <b>${esc(L.name)}</b> (${esc(FAM[loser].label)}).
+        ${Math.abs(gapTest) < (clf ? 0.01 : 0.01) ? 'L\'écart sur le test est négligeable : le choix peut se faire sur la simplicité ou la rapidité.' : `Écart sur le test : ${diff(Math.abs(gapTest), 0)}${gapTest >= 0 ? ' en faveur du gagnant' : ' (le test favorise l\'autre famille)'}.`}</p>
+        <p>⏱️ ${esc(FAM[faster].label)} est ${ratio.toFixed(1)}× plus rapide en moyenne (${st[faster].meanTime.toFixed(1)} s contre ${st[faster === 'individual' ? 'ensemble' : 'individual'].meanTime.toFixed(1)} s par modèle).</p>
+        ${st[winner].overfit + st[loser].overfit ? `<p>⚠️ ${st.individual.overfit + st.ensemble.overfit} modèle(s) en sur-apprentissage (score train bien supérieur au test) : à relativiser.</p>` : ''}
+      </div>`
+    };
+    const ICO = {"individual": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>", "ensemble": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 3v18M12 8l-5 4M12 12l5-4M12 16l-4 3M12 16l4 3\"/></svg>", "ranking": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3\"/></svg>", "charts": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 3v18h18\"/><path d=\"M7 15l4-4 3 3 5-6\"/></svg>", "conclusion": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z\"/><path d=\"M14 3v5h5M9 13h6M9 17h6\"/></svg>"};
+    const HINT = {"individual": "Meilleur modèle et scores", "ensemble": "Meilleur modèle et scores", "ranking": "Tous les modèles classés", "charts": "CV vs test, score vs durée", "conclusion": "Verdict de la comparaison"};
+    box.innerHTML = '<div class="acc-list cmp-acc" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:1.1rem;max-width:none">' + Object.keys(CMP_SUBS).map(k => `<div class="acc-item" data-sub="${k}">
+      <button type="button" class="acc-head" aria-expanded="false"><span class="acc-ico">${ICO[k]}</span>
+        <span class="acc-text"><span class="acc-title">${CMP_SUBS[k]}</span><span class="acc-hint">${HINT[k]}</span></span><span class="acc-chev" aria-hidden="true">›</span></button>
+      <div class="acc-body" hidden>${PARTS[k]}</div></div>`).join('') + '</div>';
+    $$('#panel-compare .acc-item').forEach(item => item.querySelector('.acc-head').addEventListener('click', () => {
+      const open = !item.classList.contains('open');
+      item.classList.toggle('open', open);
+      item.querySelector('.acc-head').setAttribute('aria-expanded', open ? 'true' : 'false');
+      item.querySelector('.acc-body').hidden = !open;
+      if (open && item.dataset.sub === 'charts') drawCharts();   // Plotly a besoin d'un conteneur visible
+    }));
+
+    function drawCharts() {
+    const names = all.map(m => m.label || m.name), col = all.map(m => FAM[m.fam].color);
+    Plotly.newPlot('cmp-bars', [
+      { type: 'bar', name: 'CV (train)', x: names, y: all.map(m => m.cv_mean), marker: { color: col, opacity: .45 } },
+      { type: 'bar', name: 'Test', x: names, y: all.map(m => m.test_score), marker: { color: col } }
+    ], Object.assign(PLOT(), { barmode: 'group', title: { text: `${S.individual.metric} : CV (clair) vs Test (foncé)`, font: { size: 14 } }, yaxis: { rangemode: 'tozero' }, showlegend: false }), PCFG);
+    Plotly.newPlot('cmp-time', Object.keys(FAM).map(f => {
+      const ms = all.filter(m => m.fam === f);
+      return { type: 'scatter', mode: 'markers+text', name: FAM[f].label, x: ms.map(m => m.seconds), y: ms.map(m => m.test_score), text: ms.map(m => m.name),
+               textposition: 'top center', marker: { size: 13, color: FAM[f].color } };
+    }), Object.assign(PLOT(), { title: { text: 'Score test vs durée d\'entraînement', font: { size: 14 } }, xaxis: { title: 'Durée (s)' }, yaxis: { title: S.individual.metric }, legend: { orientation: 'h', y: -0.2 } }), PCFG);
+    }
+  }
+
+  /* ---------- sidebar : un panneau à la fois ---------- */
+  function show(gid) {
+    if (gid !== 'compare' && !MP.groups[gid]) gid = Object.keys(MP.groups)[0];
+    $$('#msNav .eda-nav-item').forEach(a => a.classList.toggle('active', a.dataset.panel === gid));
+    $$('.ms-panel').forEach(p => p.classList.toggle('active', p.dataset.g === gid));
+    if (gid === 'compare') {
+      $('#msTitle').textContent = 'Comparaison — individuels vs ensemble (' + (clf ? 'classification' : 'régression') + ')';
+      renderCompare();                              // recalculée à chaque affichage : toujours à jour après un nouvel entraînement
+      return;
+    }
+    $('#msTitle').textContent = MP.groups[gid].title + ' — ' + (clf ? 'classification' : 'régression');
+    const saved = MP.groups[gid].saved;
+    if (saved && !rendered[gid]) {                 // rendu au premier affichage : Plotly a besoin d'un panneau visible
+      $('#msg-' + gid).textContent = 'Derniers résultats enregistrés affichés ci-dessous.';
+      render(gid, saved);
+    } else if (rendered[gid]) {
+      if (drawnViz[gid]) ['bars-', 'det-'].forEach(p => { const el = document.getElementById(p + gid); if (el) Plotly.Plots.resize(el); });
+    }
+  }
+  Object.keys(MP.groups).forEach(buildPanel);
+  $$('#msNav .eda-nav-item').forEach(a => a.addEventListener('click', e => {
+    e.preventDefault(); history.replaceState(null, '', '#' + a.dataset.panel); show(a.dataset.panel);
+  }));
+  show(location.hash.slice(1));
+})();
+</script>
+{% endif %}
+{% include 'components/fx.html' %}
+</body>
+</html>
