@@ -2414,10 +2414,10 @@ def _dq_imbalance(df, num_cols, target):
     if status == "ok":
         advice = "Classes équilibrées : aucun rééquilibrage nécessaire."
     elif status == "warning":
-        advice = "Déséquilibre modéré : utiliser un split stratifié et la métrique F1 / balanced accuracy ; class_weight='balanced' suffit souvent."
+        advice = "Déséquilibre modéré : utiliser un split stratifié et les métriques F1 / AUC ; class_weight='balanced' suffit souvent."
     else:
         advice = ("Fort déséquilibre : split stratifié obligatoire, class_weight='balanced' et/ou SMOTE (appliqué uniquement sur le train), "
-                  "et évaluer avec F1 / PR-AUC plutôt que l'accuracy.")
+                  "et évaluer avec F1 / AUC plutôt que l'accuracy.")
     if int(vc.iloc[-1]) < T["imb_min_class_rows"]:
         advice += f" La classe minoritaire n'a que {int(vc.iloc[-1])} lignes : envisager de la fusionner ou de collecter plus de données."
     metrics = [("Ratio max/min", f"{ratio}:1"), ("Classe minoritaire", f"{minority_pct}%"), ("Nb de classes", str(k)),

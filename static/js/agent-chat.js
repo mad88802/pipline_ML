@@ -11,7 +11,7 @@
   var busy = false;
 
   var SUGGESTIONS = dataset
-    ? ["Décris ce dataset", "Quelles colonnes ont des valeurs manquantes ?", "Quelles variables sont les plus importantes ?", "Génère le rapport général en PDF", "PDF : résultats des modèles avec/sans bruit et avec/sans outliers"]
+    ? ["Décris ce dataset", "Quelles colonnes ont des valeurs manquantes ?", "Quelles variables sont les plus importantes ?", "Génère le rapport général en PDF", "PDF : résultats des modèles avec/sans bruit et avec/sans outliers", "PDF : cahier des charges + résumé du pipeline"]
     : ["Quels datasets sont disponibles ?", "Décris le dernier dataset"];
 
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }

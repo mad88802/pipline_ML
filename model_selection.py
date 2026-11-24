@@ -12,7 +12,8 @@ Principe (anti-fuite de données) :
   * les données viennent automatiquement du prétraitement (SQLite), sinon du dataset brut ;
   * le train / test est celui de l'étape Split (colonne `__split` du prétraitement, sinon même découpage recalculé) ;
   * l'imputation / l'encodage / la mise à l'échelle sont dans un Pipeline sklearn : ils sont appris sur le TRAIN seulement ;
-  * les modèles sont CLASSÉS sur la validation croisée du train ; le test ne sert qu'à l'évaluation finale.
+  * les modèles sont CLASSÉS sur une validation (20 % du train mis de côté) ; le test ne sert qu'à l'évaluation finale ;
+  * métriques : classification = F1 pondéré (+ AUC ROC), régression = R².
 
 Les résultats sont stockés dans la table `model_results` (même base SQLite que le reste du pipeline).
 """
@@ -31,9 +32,8 @@ import step_cache
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import (accuracy_score, confusion_matrix, f1_score, mean_absolute_error,
-                             mean_squared_error, precision_score, r2_score, recall_score, roc_auc_score)
-from sklearn.model_selection import GridSearchCV, KFold, StratifiedKFold, TimeSeriesSplit, cross_val_score, cross_validate
+from sklearn.metrics import confusion_matrix, f1_score, r2_score, roc_auc_score
+from sklearn.model_selection import GridSearchCV, PredefinedSplit, train_test_split
 from sklearn.ensemble import (AdaBoostClassifier, AdaBoostRegressor, RandomForestClassifier,
                               RandomForestRegressor)
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
@@ -50,9 +50,9 @@ SEED = 42
 SVM_MAX_TRAIN = 3000          # SVM : coût ~ n² -> on limite le nombre de lignes d'entraînement
 MAX_CAT_UNIQUE = 50           # colonne texte avec plus de modalités : ignorée (one-hot trop large)
 MAX_POINTS = 500              # points affichés pour « prédit vs réel »
-CV_CHOICES = (3, 5, 10)
-CV_MAX_ROWS = 15000           # validation croisée / GridSearch calculées sur un échantillon (le modèle final est ré-entraîné sur tout le train)
-TUNE_MAX_ROWS = 6000          # GridSearchCV : échantillon plus petit
+VAL_FRACTION = 0.2            # part du train mise de côté pour la validation (choix des variantes / hyperparamètres / classement)
+VAL_MAX_ROWS = 15000          # validation / GridSearch calculées sur un échantillon (le modèle final est ré-entraîné sur tout le train)
+TUNE_MAX_ROWS = 6000          # GridSearch : échantillon plus petit
 TRAIN_EVAL_ROWS = 5000        # score « train » estimé sur un échantillon (KNN / SVM prédisent lentement)
 MAX_CLASSES = 50              # au-delà, la cible n'est pas une variable de classification
 
@@ -168,11 +168,17 @@ def _connect():
     return conn
 
 
+def _purge_old_schema(conn):
+    """Supprime les anciens résultats (validation croisée, autres métriques) : ils ne sont plus lisibles par l'interface."""
+    conn.execute("""DELETE FROM model_runs WHERE result NOT LIKE '%"schema": 2%'""")
+
+
 def get_results(dataset_name, task, group):
     """Résultats sauvegardés de (task, group) : dict ou None."""
     name = ae.clean_dataset_name(dataset_name)
     conn = _connect()
     try:
+        _purge_old_schema(conn)
         row = conn.execute("SELECT result, created_at FROM model_runs WHERE dataset=? AND task=? AND grp=?",
                            (name, task, group)).fetchone()
     finally:
@@ -191,6 +197,7 @@ def saved_overview(dataset_name):
     try:
         conn = _connect()
         try:
+            _purge_old_schema(conn)
             for task, grp, at in conn.execute("SELECT task, grp, created_at FROM model_runs WHERE dataset=?", (name,)):
                 out.setdefault(task, {})[grp] = at
         finally:
@@ -326,7 +333,7 @@ def _task_of(y_raw, requested):
 # modèles
 # ---------------------------------------------------------------------------------------------
 class _XGBClf(BaseEstimator, ClassifierMixin):
-    """XGBClassifier qui réencode lui-même les classes (XGBoost exige 0..k-1 sans trou dans CHAQUE pli de CV)."""
+    """XGBClassifier qui réencode lui-même les classes (XGBoost exige 0..k-1 sans trou, y compris sur le sous-échantillon d'entraînement)."""
 
     def __init__(self, n_estimators=100, learning_rate=0.1, max_depth=6, random_state=SEED):
         self.n_estimators, self.learning_rate, self.max_depth, self.random_state = n_estimators, learning_rate, max_depth, random_state
@@ -435,54 +442,76 @@ def clean_config(raw):
     if not models:
         missing = sorted({MODELS[m]["lib"] for m in wanted if MODELS[m]["lib"]})
         raise ValueError("Aucun modèle utilisable sélectionné" + (f" : installez {' '.join(missing)} (pip install {' '.join(missing)})." if missing else "."))
-    try:
-        cv = int(raw.get("cv", 5))
-    except (TypeError, ValueError):
-        cv = 5
     return {
         "task": raw.get("task") if raw.get("task") in ("classification", "regression") else "auto",
         "group": group,
         "models": models,
         "skipped": [m for m in wanted if m not in models],
-        "cv": cv if cv in CV_CHOICES else 5,
         "tune": bool(raw.get("tune", False)),
         "params": _clean_params(raw.get("params")),
     }
 
 
-def _cv_splitter(task, y_train, k, chronological):
+def _val_split(task, y, chronological):
+    """(indices d'entraînement, indices de validation) : un seul découpage 80 / 20 DU TRAIN.
+    Chronologique : les dernières lignes servent de validation. Classification : découpage stratifié si possible."""
+    n = len(y)
+    idx = np.arange(n)
+    n_val = max(1, int(round(n * VAL_FRACTION)))
     if chronological:
-        return TimeSeriesSplit(n_splits=k)
+        return idx[:n - n_val], idx[n - n_val:]
     if task == "classification":
-        smallest = int(pd.Series(y_train).value_counts().min())
-        if smallest >= 2:
-            return StratifiedKFold(n_splits=min(k, smallest), shuffle=True, random_state=SEED)
-    return KFold(n_splits=k, shuffle=True, random_state=SEED)
+        try:
+            tr, va = train_test_split(idx, test_size=n_val, random_state=SEED, stratify=np.asarray(y))
+            return np.sort(tr), np.sort(va)
+        except ValueError:                                     # classe trop rare pour être stratifiée
+            pass
+    tr, va = train_test_split(idx, test_size=n_val, random_state=SEED)
+    return np.sort(tr), np.sort(va)
+
+
+def _auc(model, X, y, classes):
+    """AUC ROC : binaire (score de la classe positive) ou multiclasse (un-contre-tous, pondéré). None si non calculable."""
+    try:
+        k = len(classes)
+        if k == 2:
+            score = model.decision_function(X) if hasattr(model, "decision_function") else model.predict_proba(X)[:, 1]
+            return roc_auc_score(y, score)
+        if hasattr(model, "predict_proba"):
+            proba = model.predict_proba(X)
+        else:                                                  # SVC sans probabilités : softmax des scores un-contre-tous
+            s_ = np.asarray(model.decision_function(X), dtype=float)
+            e = np.exp(s_ - s_.max(axis=1, keepdims=True))
+            proba = e / e.sum(axis=1, keepdims=True)
+        return roc_auc_score(y, proba, multi_class="ovr", average="weighted", labels=list(range(k)))
+    except Exception:
+        return None
 
 
 def _classification_metrics(model, Xte, yte, pred, classes):
-    out = {
-        "accuracy": _num(accuracy_score(yte, pred)),
-        "precision": _num(precision_score(yte, pred, average="weighted", zero_division=0)),
-        "recall": _num(recall_score(yte, pred, average="weighted", zero_division=0)),
-        "f1": _num(f1_score(yte, pred, average="weighted", zero_division=0)),
-        "f1_macro": _num(f1_score(yte, pred, average="macro", zero_division=0)),
-        "roc_auc": None,
-    }
-    try:
-        if len(classes) == 2:
-            score = model.decision_function(Xte) if hasattr(model, "decision_function") else model.predict_proba(Xte)[:, 1]
-            out["roc_auc"] = _num(roc_auc_score(yte, score))
-    except Exception:
-        pass
     labels = list(range(len(classes)))
-    out["confusion"] = confusion_matrix(yte, pred, labels=labels).tolist()
-    return out
+    return {
+        "f1": _num(f1_score(yte, pred, average="weighted", zero_division=0)),
+        "roc_auc": _num(_auc(model, Xte, yte, classes)),
+        "confusion": confusion_matrix(yte, pred, labels=labels).tolist(),
+    }
 
 
 def _regression_metrics(yte, pred):
-    return {"r2": _num(r2_score(yte, pred)), "mae": _num(mean_absolute_error(yte, pred)),
-            "rmse": _num(math.sqrt(mean_squared_error(yte, pred)))}
+    return {"r2": _num(r2_score(yte, pred))}
+
+
+def _score(task, y_true, pred):
+    """Score principal : F1 pondéré (classification) ou R² (régression)."""
+    return f1_score(y_true, pred, average="weighted", zero_division=0) if task == "classification" else r2_score(y_true, pred)
+
+
+def _holdout(key, task, X, y, params, chrono):
+    """(score validation, score entraînement) : modèle entraîné sur 80 % du train, évalué sur les 20 % restants."""
+    tr, va = _val_split(task, y, chrono)
+    Xa, Xb = X.iloc[tr].reset_index(drop=True), X.iloc[va].reset_index(drop=True)
+    m = _pipeline(Xa, key, task, params).fit(Xa, y[tr])
+    return _score(task, y[va], m.predict(Xb)), _score(task, y[tr], m.predict(Xa))
 
 
 def _sub(n, cap, y=None, seed=SEED):
@@ -510,7 +539,7 @@ def _take(X, y, idx):
     return (X, y) if idx is None else (X.iloc[idx].reset_index(drop=True), y[idx])
 
 
-def _fit_one(key, task, Xtr, ytr, Xte, yte, cfg, cv_k, chrono, classes):
+def _fit_one(key, task, Xtr, ytr, Xte, yte, cfg, chrono, classes):
     meta = MODELS[key]
     notes = []
     strat = ytr if task == "classification" and not chrono else None
@@ -518,8 +547,8 @@ def _fit_one(key, task, Xtr, ytr, Xte, yte, cfg, cv_k, chrono, classes):
         Xtr, ytr = _take(Xtr, ytr, _sub(len(Xtr), SVM_MAX_TRAIN, strat))
         notes.append(f"SVM entraîné sur un échantillon de {SVM_MAX_TRAIN:,} lignes (coût quadratique).".replace(",", " "))
     scoring = "f1_weighted" if task == "classification" else "r2"
-    # les modèles déjà multi-threadés (RF, XGB, LGBM, CatBoost) ne parallélisent pas les plis en plus
-    cv_jobs = 1 if key in ("rf", "xgb", "cat", "lgbm") else max(1, min(cv_k, os.cpu_count() or 1))
+    # les modèles déjà multi-threadés (RF, XGB, LGBM, CatBoost) ne parallélisent pas les candidats du GridSearch en plus
+    jobs = 1 if key in ("rf", "xgb", "cat", "lgbm") else max(1, os.cpu_count() or 1)
     pipe = _pipeline(Xtr, key, task, cfg["params"][key])
     t0 = time.time()
     with warnings.catch_warnings():
@@ -528,18 +557,20 @@ def _fit_one(key, task, Xtr, ytr, Xte, yte, cfg, cv_k, chrono, classes):
             Xg, yg = _take(Xtr, ytr, _sub(len(Xtr), TUNE_MAX_ROWS, strat))
             if len(Xg) < len(Xtr):
                 notes.append(f"{meta['name']} : hyperparamètres optimisés sur un échantillon de {len(Xg):,} lignes, puis modèle ré-entraîné sur tout le train.".replace(",", " "))
+            _, va_i = _val_split(task, yg, chrono)
+            fold = np.full(len(yg), -1)
+            fold[va_i] = 0                                      # -1 = toujours en entraînement, 0 = validation
             grid = {f"m__{k}": v for k, v in meta["grid"].items()}
-            gs = GridSearchCV(pipe, grid, cv=_cv_splitter(task, yg, cv_k, chrono), scoring=scoring, n_jobs=cv_jobs, refit=False)
+            gs = GridSearchCV(pipe, grid, cv=PredefinedSplit(fold), scoring=scoring, n_jobs=jobs, refit=False)
             gs.fit(Xg, yg)
-            cv_mean, cv_std = gs.best_score_, gs.cv_results_["std_test_score"][gs.best_index_]
+            val_score = gs.best_score_
             params = {**cfg["params"][key], **{k.replace("m__", ""): v for k, v in gs.best_params_.items()}}
             model = _pipeline(Xtr, key, task, params).fit(Xtr, ytr)
         else:
-            Xc, yc = _take(Xtr, ytr, _sub(len(Xtr), CV_MAX_ROWS, strat))
+            Xc, yc = _take(Xtr, ytr, _sub(len(Xtr), VAL_MAX_ROWS, strat))
             if len(Xc) < len(Xtr):
-                notes.append(f"{meta['name']} : validation croisée calculée sur un échantillon de {len(Xc):,} lignes (modèle final entraîné sur tout le train).".replace(",", " "))
-            scores = cross_val_score(pipe, Xc, yc, cv=_cv_splitter(task, yc, cv_k, chrono), scoring=scoring, n_jobs=cv_jobs)
-            cv_mean, cv_std = float(np.mean(scores)), float(np.std(scores))
+                notes.append(f"{meta['name']} : validation calculée sur un échantillon de {len(Xc):,} lignes (modèle final entraîné sur tout le train).".replace(",", " "))
+            val_score, _ = _holdout(key, task, Xc, yc, cfg["params"][key], chrono)
             model = pipe.fit(Xtr, ytr)
             params = dict(cfg["params"][key])
         pred = model.predict(Xte)
@@ -555,7 +586,7 @@ def _fit_one(key, task, Xtr, ytr, Xte, yte, cfg, cv_k, chrono, classes):
         main = test_m["r2"]
     res = {
         "id": key, "name": meta["name"], "params": params,
-        "cv_mean": _num(cv_mean), "cv_std": _num(cv_std),
+        "val_score": _num(val_score),
         "train_score": _num(train_score), "test_score": main,
         "test": test_m, "seconds": round(time.time() - t0, 2), "note": " ".join(n for n in notes if n.startswith("SVM")) or None,
         "overfit": bool(train_score - (main or 0) > 0.15),
@@ -610,42 +641,38 @@ _SWEEP = {
 def _slim(r, label, vid):
     """Résultat d'une variante, sans matrice de confusion (poids du JSON)."""
     t = {k: v for k, v in r["test"].items() if k != "confusion"}
-    return {"id": vid, "label": label, "params": r["params"], "cv_mean": r["cv_mean"], "cv_std": r["cv_std"],
+    return {"id": vid, "label": label, "params": r["params"], "val_score": r["val_score"],
             "train_score": r["train_score"], "test_score": r["test_score"], "test": t, "seconds": r["seconds"], "overfit": r["overfit"]}
 
 
-def _sweep(key, task, Xtr, ytr, params, cv_k, chrono):
-    """Courbe score (train / validation croisée) selon l'hyperparamètre clé, pour la variante gagnante."""
+def _sweep(key, task, Xtr, ytr, params, chrono):
+    """Courbe score (train / validation) selon l'hyperparamètre clé, pour la variante gagnante."""
     pname, plabel, values, logx = _SWEEP[key]
     strat = ytr if task == "classification" and not chrono else None
     if key == "svm" and len(Xtr) > SVM_MAX_TRAIN:
         Xtr, ytr = _take(Xtr, ytr, _sub(len(Xtr), SVM_MAX_TRAIN, strat))
         strat = ytr if strat is not None else None
-    Xc, yc = _take(Xtr, ytr, _sub(len(Xtr), CV_MAX_ROWS, strat))
-    scoring = "f1_weighted" if task == "classification" else "r2"
-    cv_jobs = 1 if key in ("rf", "xgb", "cat", "lgbm") else max(1, min(cv_k, os.cpu_count() or 1))
+    Xc, yc = _take(Xtr, ytr, _sub(len(Xtr), VAL_MAX_ROWS, strat))
     if key == "knn":
-        values = [v for v in values if v < max(2, int(len(Xc) * (cv_k - 1) / (cv_k + 1)))]
+        values = [v for v in values if v < max(2, int(len(Xc) * (1 - VAL_FRACTION)))]
     pts = []
     for v in values:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                cvr = cross_validate(_pipeline(Xc, key, task, {**params, pname: v}), Xc, yc, cv=_cv_splitter(task, yc, cv_k, chrono),
-                                     scoring=scoring, return_train_score=True, n_jobs=cv_jobs, error_score=np.nan)
-            cm, tm = float(np.nanmean(cvr["test_score"])), float(np.nanmean(cvr["train_score"]))
-            if not (math.isfinite(cm) and math.isfinite(tm)):
+                vm, tm = _holdout(key, task, Xc, yc, {**params, pname: v}, chrono)
+            if not (math.isfinite(vm) and math.isfinite(tm)):
                 continue
-            pts.append({"value": v, "cv": _num(cm), "cv_std": _num(np.nanstd(cvr["test_score"])), "train": _num(tm)})
+            pts.append({"value": v, "val": _num(vm), "train": _num(tm)})
         except Exception:
             continue
-    best = max(pts, key=lambda q: q["cv"]) if pts else None
+    best = max(pts, key=lambda q: q["val"]) if pts else None
     return {"param": pname, "label": plabel, "log": logx, "points": pts, "best": best["value"] if best else params.get(pname),
             "sample_rows": int(len(Xc))}
 
 
 def _study(key, task, Xtr, ytr, Xte, yte, cfg, chrono, classes, tick):
-    """Modèle individuel complet : variantes -> gagnante (CV) -> courbe de l'hyperparamètre clé -> modèle final."""
+    """Modèle individuel complet : variantes -> gagnante (validation) -> courbe de l'hyperparamètre clé -> modèle final."""
     base = dict(cfg["params"][key])
     cfg_nt = {**cfg, "tune": False}
     variants, win, win_pred = [], None, None
@@ -653,12 +680,12 @@ def _study(key, task, Xtr, ytr, Xte, yte, cfg, chrono, classes, tick):
         tick(f"{MODELS[key]['name']} · {label}")
         c2 = {**cfg_nt, "params": {**cfg["params"], key: {**base, **vp}}}
         try:
-            r, pred = _fit_one(key, task, Xtr, ytr, Xte, yte, c2, cfg["cv"], chrono, classes)
+            r, pred = _fit_one(key, task, Xtr, ytr, Xte, yte, c2, chrono, classes)
         except Exception as e:                                       # une variante qui échoue ne bloque pas les autres
             variants.append({"id": vid, "label": label, "params": {**base, **vp}, "error": f"{type(e).__name__}: {e}"[:160]})
             continue
         variants.append(_slim(r, label, vid))
-        if win is None or (r["cv_mean"] or -1e9) > (win[0]["cv_mean"] or -1e9):
+        if win is None or (r["val_score"] or -1e9) > (win[0]["val_score"] or -1e9):
             win, win_pred = (r, label, vid, vp), pred
     if win is None:
         raise ValueError(f"{MODELS[key]['name']} : aucune variante n'a pu être entraînée.")
@@ -666,15 +693,15 @@ def _study(key, task, Xtr, ytr, Xte, yte, cfg, chrono, classes, tick):
     wparams = {**base, **win_vp}
 
     tick(f"{MODELS[key]['name']} · réglage de {_SWEEP[key][0]}")
-    sw = _sweep(key, task, Xtr, ytr, wparams, cfg["cv"], chrono)
+    sw = _sweep(key, task, Xtr, ytr, wparams, chrono)
     final_params = {**wparams, sw["param"]: sw["best"]}
     if final_params == r_win["params"]:
         final, pred = r_win, win_pred
     else:
         tick(f"{MODELS[key]['name']} · modèle final")
         c3 = {**cfg_nt, "params": {**cfg["params"], key: final_params}}
-        final, pred = _fit_one(key, task, Xtr, ytr, Xte, yte, c3, cfg["cv"], chrono, classes)
-        if (final["cv_mean"] or -1e9) < (r_win["cv_mean"] or -1e9):  # le réglage ne doit jamais dégrader la variante gagnante
+        final, pred = _fit_one(key, task, Xtr, ytr, Xte, yte, c3, chrono, classes)
+        if (final["val_score"] or -1e9) < (r_win["val_score"] or -1e9):  # le réglage ne doit jamais dégrader la variante gagnante
             final, pred, sw["best"] = r_win, win_pred, wparams.get(sw["param"])
     final["variant"] = win_label
     final["name"] = MODELS[key]["name"]
@@ -787,7 +814,7 @@ def get_task_profile(dataset_name, task):
     if d["ignored"]:
         notes.append(f"Colonnes texte ignorées (plus de {MAX_CAT_UNIQUE} modalités) : " + ", ".join(d["ignored"][:6]) + ("…" if len(d["ignored"]) > 6 else "") + ".")
     if d["chronological"]:
-        notes.append("Découpage chronologique : la validation croisée respecte l'ordre du temps (TimeSeriesSplit).")
+        notes.append("Découpage chronologique : la validation utilise les dernières lignes du train (l'ordre du temps est respecté).")
     groups = {}
     for gid, g in GROUPS.items():
         groups[gid] = {
@@ -799,7 +826,7 @@ def get_task_profile(dataset_name, task):
                        for m in g["models"]],
         }
     return {**_common(d), "task": task, "classes": classes, "notes": notes, "groups": groups,
-            "cv_choices": list(CV_CHOICES), "svm_max_train": SVM_MAX_TRAIN, "python": sys.executable}
+            "svm_max_train": SVM_MAX_TRAIN, "python": sys.executable}
 
 
 def _input_signature(dataset_name):
@@ -811,7 +838,7 @@ def _input_signature(dataset_name):
 def run(dataset_name, raw_cfg, save=True, progress=None, refresh=False):
     """Entraîne et compare les modèles d'une famille. Mêmes réglages + mêmes données = résultat relu dans SQLite."""
     cfg = clean_config(raw_cfg)
-    params = {"cfg": cfg, "v": 3, **_input_signature(dataset_name)}
+    params = {"cfg": cfg, "v": 4, **_input_signature(dataset_name)}
     if not refresh:
         hit = step_cache.get(dataset_name, "model_run", params)
         if hit is not None:
@@ -876,16 +903,16 @@ def _run_compute(dataset_name, cfg, save=True, progress=None):
         learners[key] = lr
     if progress:
         progress(state["i"], state["i"], "")
-    results.sort(key=lambda r: (r["cv_mean"] is None, -(r["cv_mean"] or 0)))
+    results.sort(key=lambda r: (r["val_score"] is None, -(r["val_score"] or 0)))
     best = results[0]
 
     out = {
         "task": task, "group": cfg["group"], "target": d["target"],
         "metric": "F1 pondéré" if task == "classification" else "R²",
-        "config": {k: cfg[k] for k in ("models", "cv", "tune")}, "skipped": cfg["skipped"],
+        "config": {k: cfg[k] for k in ("models", "tune")}, "skipped": cfg["skipped"],
         "n_train": int(len(Xtr)), "n_test": int(len(Xte)), "n_features": int(X.shape[1]),
         "source": "preprocessed" if d["is_pre"] else "raw", "chronological": d["chronological"],
-        "classes": classes, "results": results, "best": best["id"],
+        "classes": classes, "results": results, "best": best["id"], "schema": 2,
     }
     if learners:
         out["learners"] = learners

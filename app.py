@@ -27,6 +27,7 @@ import preprocessing
 import step_cache
 import split
 import model_selection
+import scenario_report
 
 _REQUIRED = ("AUTO", "SUPPORTED_EXTENSIONS", "clean_dataset_name", "run_full_analysis",
              "load_summary", "export_table_csv", "migrate_legacy_results", "get_noise_series", "get_outlier_series", "get_isolation_forest", "get_distribution_series", "get_anova_importance", "get_anova_targets")
@@ -467,7 +468,7 @@ ML_PIPELINE_PHASES = {
         "step_num": "04",
         "title": "Model Selection",
         "full_title": "Sélection & Comparaison des Modèles",
-        "subtitle": "Régression ou classification : modèles individuels (SVM, KNN, Arbre) et ensemble learning (Random Forest, AdaBoost, XGBoost, CatBoost, LightGBM), avec validation croisée et réglage des hyperparamètres.",
+        "subtitle": "Régression ou classification : modèles individuels (SVM, KNN, Arbre) et ensemble learning (Random Forest, AdaBoost, XGBoost, CatBoost, LightGBM), avec validation (20 % du train), métriques F1 et AUC (classification) ou R² (régression) et réglage des hyperparamètres.",
         "icon": "🤖",
         "theme": "rose-theme",
         "status": "pending",
@@ -1024,6 +1025,78 @@ def api_model_status(dataset_name, job_id):
     elif job["state"] == "error":
         out["message"] = job["message"]
     return jsonify(out)
+
+
+def _scenario_payload(res):
+    out = dict(res)
+    out["deltas"] = scenario_report.deltas(res)
+    out["summary_md"] = scenario_report.auto_summary(res, "fr")
+    return out
+
+
+def _scenario_worker(job_id, dataset_name, task, window, refresh):
+    def progress(i, total, name):
+        _MODEL_JOBS[job_id].update(done=i, total=total, current=name)
+    try:
+        res = scenario_report.run(dataset_name, task=task, window=window, refresh=refresh, progress=progress)
+        _MODEL_JOBS[job_id].update(state="done", result=_scenario_payload(res))
+    except (KeyError, FileNotFoundError) as e:
+        _MODEL_JOBS[job_id].update(state="error", message=str(e).strip("'\""))
+    except ValueError as e:
+        _MODEL_JOBS[job_id].update(state="error", message=str(e))
+    except Exception as e:
+        _MODEL_JOBS[job_id].update(state="error", message=f"{type(e).__name__}: {e}")
+
+
+@app.route("/api/scenarios/<dataset_name>/run", methods=["POST"])
+def api_scenarios_run(dataset_name):
+    """Compare les modèles avec / sans outliers et avec / sans bruit (en arrière-plan ; suivi via /api/model/<ds>/status/<job_id>)."""
+    body = request.get_json(silent=True) or {}
+    task = body.get("task") if body.get("task") in ("regression", "classification") else None
+    window = body.get("window")
+    job_id = uuid.uuid4().hex[:12]
+    with _MODEL_JOBS_LOCK:
+        for k in [k for k, v in _MODEL_JOBS.items() if time.time() - v["t0"] > 3600]:
+            _MODEL_JOBS.pop(k, None)
+        _MODEL_JOBS[job_id] = {"state": "running", "done": 0, "total": 0, "current": "", "t0": time.time()}
+    threading.Thread(target=_scenario_worker, args=(job_id, dataset_name, task, window, bool(body.get("refresh"))), daemon=True).start()
+    return jsonify({"status": "started", "job_id": job_id})
+
+
+@app.route("/api/scenarios/<dataset_name>/saved")
+def api_scenarios_saved(dataset_name):
+    """Dernière comparaison avec / sans outliers et bruit DÉJÀ enregistrée dans analysis.db (aucun entraînement)."""
+    task = request.args.get("task") if request.args.get("task") in ("regression", "classification") else None
+    try:
+        res, exact = scenario_report.cached(dataset_name, task=task, window=request.args.get("window", type=int))
+    except (KeyError, FileNotFoundError) as e:
+        return jsonify({"status": "error", "message": str(e).strip("'\"")}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"{type(e).__name__}: {e}"}), 500
+    if res is None:
+        return jsonify({"status": "none"})
+    return jsonify({"status": "ok", "exact": exact, "result": _scenario_payload(res)})
+
+
+@app.route("/api/scenarios/<dataset_name>/pdf", methods=["POST"])
+def api_scenarios_pdf(dataset_name):
+    """Génère le rapport PDF à partir des résultats déjà enregistrés (aucun entraînement)."""
+    body = request.get_json(silent=True) or {}
+    task = body.get("task") if body.get("task") in ("regression", "classification") else None
+    lang = body.get("language") if body.get("language") in ("fr", "en") else "fr"
+    try:
+        ds = analysis_engine.clean_dataset_name(dataset_name)
+        res, _exact = scenario_report.cached(ds, task=task, window=body.get("window"))
+        if res is None:
+            return jsonify({"status": "error", "message": "Aucun résultat enregistré : lancez d'abord la comparaison."}), 404
+        path = scenario_report.build_model_comparison_pdf(ds, language=lang, res=res)
+        return jsonify({"status": "ok", "name": path.name, "url": url_for("serve_report", dataset_name=ds, filename=path.name)})
+    except (KeyError, FileNotFoundError) as e:
+        return jsonify({"status": "error", "message": str(e).strip("'\"")}), 404
+    except ai_interpret.AIError as e:
+        return jsonify({"status": "error", "message": str(e)}), e.status
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"{type(e).__name__}: {e}"}), 500
 
 
 @app.route("/api/correlation-target/<dataset_name>/<target_col>")

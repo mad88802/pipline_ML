@@ -240,9 +240,9 @@ def _pipeline_info(ds):
                 r = ms_.get_results(ds, task, gid)
                 if not r:
                     continue
-                res = sorted(r.get("results", []), key=lambda x: -(x.get("cv_mean") or -1e9))[:5]
+                res = sorted(r.get("results", []), key=lambda x: -(x.get("val_score") or -1e9))[:5]
                 runs.append({"tache": task, "famille": g["title"], "metrique": r.get("metric"), "meilleur": next((x["name"] for x in r["results"] if x["id"] == r.get("best")), None),
-                             "modeles": [{"nom": x["name"], "cv": x.get("cv_mean"), "test": x.get("test_score")} for x in res]})
+                             "modeles": [{"nom": x["name"], "val": x.get("val_score"), "test": x.get("test_score")} for x in res]})
         if runs:
             info["modeles"] = runs
     except Exception:
@@ -260,6 +260,16 @@ def tool_create_model_comparison_pdf(ctx, narrative="", dataset=None, language="
     ctx.setdefault("files", []).append({"name": path.name, "url": f"/results/{ds}/reports/{path.name}", "dataset": ds})
     return {"status": "ok", "fichier": path.name, "resume": scenario_report.compact(res),
             "message": "Le PDF de comparaison est prêt, un bouton de téléchargement est affiché. Commente les chiffres du résumé sans en inventer."}
+
+
+def tool_create_specification_pdf(ctx, narrative="", dataset=None, language="fr"):
+    """3e PDF : cahier des charges + résumé du pipeline (exigences avec statut réel, étapes faites, risques)."""
+    import spec_report
+    ds = _resolve_dataset(dataset, ctx.get("dataset"))
+    lang = language if language in ("fr", "en") else "fr"
+    path = spec_report.build_schema_pdf(ds, narrative=narrative, language=lang)
+    ctx.setdefault("files", []).append({"name": path.name, "url": f"/results/{ds}/reports/{path.name}", "dataset": ds})
+    return {"status": "ok", "fichier": path.name, "message": "Le PDF cahier des charges / résumé du pipeline est prêt, un bouton de téléchargement est affiché."}
 
 
 def tool_dataset_brief(ctx, dataset=None):
@@ -384,6 +394,14 @@ TOOLS["create_model_comparison_pdf"] = (
      "window": {"type": "integer", "description": "Fenêtre de la moyenne mobile pour retirer le bruit (défaut : réglage du prétraitement, sinon 5)"}}, [])
 
 
+TOOLS["create_specification_pdf"] = (
+    tool_create_specification_pdf,
+    "Génère le PDF CAHIER DES CHARGES + RÉSUMÉ DU PIPELINE sous forme de SCHÉMAS uniquement (sans paragraphes) : flux du pipeline avec statuts, "
+    "architecture, graphiques des données et des modèles, exigences et risques. Pas besoin de `narrative`.",
+    {"narrative": {"type": "string", "description": "Contexte et objectif rédigés (facultatif, sinon texte automatique)"},
+     "dataset": {"type": "string"}, "language": {"type": "string", "enum": ["fr", "en"]}}, [])
+
+
 def _tool_specs():
     return [{"type": "function", "function": {"name": n, "description": d,
                                               "parameters": {"type": "object", "properties": p, "required": r}}}
@@ -413,7 +431,7 @@ def _run_tool(ctx, name, raw_args):
 def _system_prompt(dataset):
     return (
         "Tu es l'assistant data d'une application de pipeline ML (EDA, prétraitement, split, sélection de modèles). Tu aides à comprendre n'importe quel "
-        "dataset déjà analysé et tu peux générer DEUX types de rapports PDF.\n"
+        "dataset déjà analysé et tu peux générer TROIS types de rapports PDF.\n"
         f"Dataset actuellement ouvert par l'utilisateur : {dataset or 'aucun'}. Sans précision, c'est celui dont il parle.\n"
         "Règles :\n"
         "- Réponds dans la langue de l'utilisateur (français par défaut), de façon claire et concise, en Markdown simple.\n"
@@ -421,7 +439,9 @@ def _system_prompt(dataset):
         "- Pour décrire un dataset, appelle dataset_brief (un seul appel donne l'essentiel, y compris l'état du pipeline) ; les autres outils servent à approfondir une question précise.\n"
         "- Rapport GÉNÉRAL (EDA + prétraitement + split + modèles) : appelle dataset_brief, rédige une synthèse fidèle, puis appelle create_pdf_report UNE seule fois.\n"
         "- Rapport de COMPARAISON DES MODÈLES (avec / sans bruit, avec / sans outliers) : appelle create_model_comparison_pdf UNE seule fois, puis commente "
-        "les chiffres du résumé renvoyé. Si l'utilisateur demande les deux rapports, appelle les deux outils.\n"
+        "les chiffres du résumé renvoyé.\n"
+        "- CAHIER DES CHARGES ou RÉSUMÉ DU PIPELINE (« cahier de charge », « pipeline résumé », spécification) : appelle dataset_brief, puis create_specification_pdf UNE seule fois.\n"
+        "- Si l'utilisateur demande plusieurs rapports, appelle chaque outil concerné une fois.\n"
         "- Ne recopie pas de lien : un bouton de téléchargement apparaît tout seul.\n"
         "- Tu ne peux ni modifier ni supprimer des données ; tu lis les résultats d'analyse (le seul calcul que tu lances est la comparaison des modèles).\n"
     )
@@ -523,11 +543,20 @@ def _fallback(dataset, user_text, ctx, err):
     wants_pdf = bool(re.search(r"\b(pdf|rapport|report)\b", user_text, re.I))
     wants_cmp = bool(re.search(r"(bruit|noise|outlier|aberrant|compar|mod[eè]les?\b|models?\b)", user_text, re.I))
     wants_gen = bool(re.search(r"(g[ée]n[ée]ral|complet|full|global|overall)", user_text, re.I))
+    wants_spec = bool(re.search(r"(cahier|charges?\b|sp[ée]cification|requirements?|pipeline)", user_text, re.I))
     text = auto_narrative(dataset, lang)
     files = list(ctx.get("files") or [])
     extra = ""
+    wants_pdf = wants_pdf or wants_spec
     if wants_pdf and not files:
-        if not wants_cmp or wants_gen:
+        if wants_spec:
+            try:
+                import spec_report
+                path = spec_report.build_schema_pdf(dataset, narrative=text, language=lang)
+                files.append({"name": path.name, "url": f"/results/{dataset}/reports/{path.name}", "dataset": dataset})
+            except Exception as e:
+                extra += f"Le PDF cahier des charges n'a pas pu être généré : {e}\n\n"
+        if (not wants_cmp and not wants_spec) or wants_gen:
             path = build_pdf_report(dataset, narrative=text, language=lang)
             files.append({"name": path.name, "url": f"/results/{dataset}/reports/{path.name}", "dataset": dataset})
         if wants_cmp:
@@ -575,7 +604,7 @@ LABELS = {
         "corr_title": "Corrélations (Pearson)", "pair": "Paire", "tgt_title": "Cible et importance des variables (ANOVA)",
         "class": "Classe", "var": "Variable", "dist_title": "Distributions", "others": "autres colonnes non affichées",
         "pp_title": "Prétraitement", "step": "Étape", "detail": "Détail", "split_title": "Split train / test", "test_size": "Part de test", "strategy": "Stratégie",
-        "excluded": "Variables exclues", "models_title": "Modèles", "model": "Modèle", "cvm": "CV", "train": "Train", "test": "Test", "best": "Meilleur modèle", "task": "Problème",
+        "excluded": "Variables exclues", "models_title": "Modèles", "model": "Modèle", "cvm": "Val", "train": "Train", "test": "Test", "best": "Meilleur modèle", "task": "Problème",
         "page": "Page", "no_corr": "Pas de matrice de corrélation disponible.", "anova_note": "F élevé = la variable sépare bien les classes de la cible ; p < 0,05 = écart significatif ; eta2 = part de variance expliquée.",
     },
     "en": {
@@ -588,7 +617,7 @@ LABELS = {
         "corr_title": "Correlations (Pearson)", "pair": "Pair", "tgt_title": "Target and feature importance (ANOVA)",
         "class": "Class", "var": "Variable", "dist_title": "Distributions", "others": "more columns not shown",
         "pp_title": "Preprocessing", "step": "Step", "detail": "Detail", "split_title": "Train / test split", "test_size": "Test share", "strategy": "Strategy",
-        "excluded": "Excluded variables", "models_title": "Models", "model": "Model", "cvm": "CV", "train": "Train", "test": "Test", "best": "Best model", "task": "Problem",
+        "excluded": "Excluded variables", "models_title": "Models", "model": "Model", "cvm": "Val", "train": "Train", "test": "Test", "best": "Best model", "task": "Problem",
         "page": "Page", "no_corr": "No correlation matrix available.", "anova_note": "High F = the variable separates the target classes well; p < 0.05 = significant difference; eta2 = share of variance explained.",
     },
 }
@@ -819,11 +848,11 @@ def build_pdf_report(dataset, narrative="", language="fr"):
                 if first:
                     story.append(Paragraph(L["models_title"], st["h"]))
                     first = False
-                res = sorted(r.get("results", []), key=lambda x: -(x.get("cv_mean") or -1e9))
+                res = sorted(r.get("results", []), key=lambda x: -(x.get("val_score") or -1e9))
                 bestname = next((x["name"] for x in res if x["id"] == r.get("best")), "-")
                 head = Paragraph(_txt(f"{task} - {g['title']}  ({L['best']} : {bestname}, {r.get('metric')})"), st["p"])
                 rows = [[L["model"], L["cvm"], L["train"], L["test"]]] + [
-                    [x["name"], _fmt(x.get("cv_mean")), _fmt(x.get("train_score")), _fmt(x.get("test_score"))] for x in res]
+                    [x["name"], _fmt(x.get("val_score")), _fmt(x.get("train_score")), _fmt(x.get("test_score"))] for x in res]
                 story.append(KeepTogether([head, table(rows, [W - 9 * cm, 3 * cm, 3 * cm, 3 * cm]), Spacer(1, 6)]))
     except Exception:
         pass

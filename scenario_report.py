@@ -19,6 +19,7 @@ Principe d'équité :
 Le « bruit » est ici celui de l'étape Prétraitement : variations à haute fréquence retirées par moyenne mobile.
 Il n'a de sens que pour une série temporelle ; sinon seuls les scénarios « avec / sans outliers » sont calculés.
 """
+import json
 import tempfile
 import time
 from datetime import datetime
@@ -98,9 +99,9 @@ def _scenarios(is_ts):
 
 def _row(r, task):
     t = r["test"]
-    row = {"id": r["id"], "name": r["name"], "cv": r["cv_mean"], "cv_std": r["cv_std"], "train": r["train_score"],
+    row = {"id": r["id"], "name": r["name"], "val": r["val_score"], "train": r["train_score"],
            "test": r["test_score"], "seconds": r["seconds"], "overfit": r["overfit"]}
-    keys = ("accuracy", "precision", "recall", "f1", "roc_auc") if task == "classification" else ("r2", "mae", "rmse")
+    keys = ("f1", "roc_auc") if task == "classification" else ("r2",)
     row.update({k: t.get(k) for k in keys})
     return row
 
@@ -109,7 +110,7 @@ def _step_detail(steps, key):
     return next((s.get("detail") for s in steps if s.get("key") == key), None)
 
 
-def _compute(ds, task, models, window, cv, progress):
+def _compute(ds, task, models, window, progress):
     summary, raw = pp._load(ds)
     dtype, date_col = pp._dtype(summary), summary.get("date_column")
     is_ts = dtype == "time_series" and date_col is not None
@@ -135,7 +136,7 @@ def _compute(ds, task, models, window, cv, progress):
                 progress(done - 1, total, f"{sd['id']} · {ms.MODELS[key]['name']}")
             c = {"params": {key: params}, "tune": False}
             try:
-                r, _pred = ms._fit_one(key, used_task, Xtr, ytr, Xte, yte, c, cv, chrono, classes)
+                r, _pred = ms._fit_one(key, used_task, Xtr, ytr, Xte, yte, c, chrono, classes)
                 rows.append(_row(r, used_task))
             except Exception as e:                      # un modèle qui échoue ne bloque pas les autres
                 rows.append({"id": key, "name": ms.MODELS[key]["name"], "error": f"{type(e).__name__}: {e}"[:160]})
@@ -154,16 +155,16 @@ def _compute(ds, task, models, window, cv, progress):
         notes.append("not_ts")
     return {
         "dataset": ae.clean_dataset_name(ds), "task": used_task, "target": target, "is_time_series": is_ts, "window": window if is_ts else None,
-        "metric": "F1 pondéré" if used_task == "classification" else "R²", "cv": cv, "nu": base.get("ocsvm_nu", pp.DEFAULTS["ocsvm_nu"]),
+        "metric": "F1 pondéré" if used_task == "classification" else "R²", "nu": base.get("ocsvm_nu", pp.DEFAULTS["ocsvm_nu"]),
         "chronological": chrono, "models": [k for k, _ in models], "created_at": datetime.now().isoformat(timespec="seconds"),
         "scenarios": out_sc, "notes": notes,
     }
 
 
-def run(dataset, task=None, window=None, cv=3, models=None, refresh=False, progress=None):
-    """Résultats des modèles dans les 4 scénarios (2 si ce n'est pas une série temporelle). Mis en cache."""
+def _plan(dataset, task=None, window=None, models=None):
+    """Paramètres d'un calcul (sans rien calculer) : (ds, task, modèles, fenêtre, params de cache, source des modèles)."""
     ds = ae.clean_dataset_name(dataset)
-    summary, _ = pp._load(ds)
+    summary, _src = ae._resolve_source(ds, None, ae.RESULTS_DIR)        # résumé seul : on ne relit pas les données
     base, pp_at = _base_config(ds, summary)
     task = task if task in ("classification", "regression") else None
     saved_task, saved = saved_models(ds, task)
@@ -180,12 +181,48 @@ def run(dataset, task=None, window=None, cv=3, models=None, refresh=False, progr
     except (TypeError, ValueError):
         window = 0
     window = window if window >= 2 else (int(base.get("smooth_window") or 0) if int(base.get("smooth_window") or 0) >= 2 else DEFAULT_WINDOW)
-    cv = cv if cv in ms.CV_CHOICES else 3
-    params = {"task": task, "window": window, "cv": cv, "models": chosen, "pp_at": pp_at,
+    params = {"task": task, "window": window, "v": 2, "models": chosen, "pp_at": pp_at,
               "pp": {k: base.get(k) for k in sorted(base) if k not in ("outliers", "smooth_window")}}
-    res = step_cache.get_or_compute(ds, KIND, params, lambda: _compute(ds, task, chosen, window, cv, progress), refresh=refresh)
-    res["models_source"] = "saved" if (saved and not models) else "default" if not models else "custom"
+    source = "saved" if (saved and not models) else "default" if not models else "custom"
+    return ds, task, chosen, window, params, source
+
+
+def run(dataset, task=None, window=None, models=None, refresh=False, progress=None):
+    """Résultats des modèles dans les 4 scénarios (2 si ce n'est pas une série temporelle). Mis en cache."""
+    ds, task, chosen, window, params, source = _plan(dataset, task, window, models)
+    res = step_cache.get_or_compute(ds, KIND, params, lambda: _compute(ds, task, chosen, window, progress), refresh=refresh)
+    res["models_source"] = source
     return res
+
+
+def cached(dataset, task=None, window=None):
+    """Résultat DÉJÀ enregistré dans analysis.db (aucun entraînement). Retourne (résultat, exact) ou (None, False).
+
+    exact=True  : le résultat correspond aux réglages actuels (données, split, prétraitement, modèles, fenêtre).
+    exact=False : à défaut, le plus récent résultat enregistré pour ce dataset (et cette tâche si elle est connue) ;
+                  il a pu être calculé avec d'autres réglages : à signaler à l'utilisateur."""
+    ds, task, _chosen, window, params, source = _plan(dataset, task, window)
+    hit = step_cache.get(ds, KIND, params)
+    if hit is not None:
+        hit["models_source"] = source
+        return hit, True
+    try:
+        conn = step_cache._connect()
+        try:
+            rows = conn.execute("SELECT payload FROM step_cache WHERE dataset=? AND kind=? ORDER BY created_at DESC, rowid DESC", (ds, KIND)).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return None, False
+    for (payload,) in rows:
+        try:
+            res = json.loads(payload)
+        except ValueError:
+            continue
+        if not task or res.get("task") == task:
+            res.setdefault("models_source", "saved")
+            return res, False
+    return None, False
 
 
 # ======================================================================
@@ -279,10 +316,10 @@ PL = {
     "fr": {"title": "Comparaison des modèles : outliers et bruit", "gen": "Généré le", "synth": "Synthèse", "info": "Cadre de l'expérience",
            "ds": "Dataset", "target": "Cible", "task": "Problème", "classification": "Classification", "regression": "Régression", "metric": "Métrique principale",
            "models": "Modèles", "src_saved": "ceux de l'étape Modèles (hyperparamètres enregistrés)", "src_default": "valeurs par défaut (aucun entraînement enregistré)",
-           "src_custom": "sélection personnalisée", "split": "Train / Test", "cv": "Validation croisée", "win": "Fenêtre de lissage", "none": "-",
+           "src_custom": "sélection personnalisée", "split": "Train / Test", "cv": "Validation", "win": "Fenêtre de lissage", "none": "-",
            "sc_title": "Scénarios comparés", "scen": "Scénario", "outl": "Outliers", "noise": "Bruit", "ntr": "Lignes train", "rem": "Retirées", "detail": "Détail",
            "kept": "conservés", "removed": "retirés (One-Class SVM)", "kept_n": "conservé", "smoothed": "lissé (moyenne mobile)",
-           "res_title": "Résultats par scénario", "model": "Modèle", "cvm": "CV", "train": "Train", "test": "Test", "sec": "Durée (s)",
+           "res_title": "Résultats par scénario", "model": "Modèle", "cvm": "Val", "train": "Train", "test": "Test", "sec": "Durée (s)",
            "cmp_title": "Comparaison globale (score test)", "fx_title": "Effet de chaque traitement (écart vs scénario A)", "best": "meilleur",
            "chart1": "Score test par modèle et par scénario", "chart2": "Écart de score vs scénario A (brut)",
            "meth_title": "Méthode et limites", "page": "Page", "err": "échec", "ovf": "sur-apprentissage possible",
@@ -294,10 +331,10 @@ PL = {
     "en": {"title": "Model comparison: outliers and noise", "gen": "Generated on", "synth": "Summary", "info": "Experiment setup",
            "ds": "Dataset", "target": "Target", "task": "Problem", "classification": "Classification", "regression": "Regression", "metric": "Main metric",
            "models": "Models", "src_saved": "those of the Models step (saved hyperparameters)", "src_default": "default values (no saved training)",
-           "src_custom": "custom selection", "split": "Train / Test", "cv": "Cross-validation", "win": "Smoothing window", "none": "-",
+           "src_custom": "custom selection", "split": "Train / Test", "cv": "Validation", "win": "Smoothing window", "none": "-",
            "sc_title": "Compared scenarios", "scen": "Scenario", "outl": "Outliers", "noise": "Noise", "ntr": "Train rows", "rem": "Removed", "detail": "Detail",
            "kept": "kept", "removed": "removed (One-Class SVM)", "kept_n": "kept", "smoothed": "smoothed (moving average)",
-           "res_title": "Results per scenario", "model": "Model", "cvm": "CV", "train": "Train", "test": "Test", "sec": "Time (s)",
+           "res_title": "Results per scenario", "model": "Model", "cvm": "Val", "train": "Train", "test": "Test", "sec": "Time (s)",
            "cmp_title": "Overall comparison (test score)", "fx_title": "Effect of each treatment (change vs scenario A)", "best": "best",
            "chart1": "Test score per model and scenario", "chart2": "Score change vs scenario A (raw)",
            "meth_title": "Method and limits", "page": "Page", "err": "failed", "ovf": "possible overfitting",
@@ -435,7 +472,7 @@ def build_model_comparison_pdf(dataset, narrative="", language="fr", res=None, *
     story += [Paragraph(P["info"], st["h"]), table([
         [P["ds"], ds, P["target"], str(res["target"])],
         [P["task"], P["classification"] if clf else P["regression"], P["metric"], res["metric"]],
-        [P["split"], f"{_fmt(first['n_train'])} / {_fmt(first['n_test'])}", P["cv"], f"{res['cv']} plis"],
+        [P["split"], f"{_fmt(first['n_train'])} / {_fmt(first['n_test'])}", P["cv"], f"{round(ms.VAL_FRACTION * 100)} % " + ("du train" if lang == "fr" else "of train")],
         [P["models"], names, P["win"], str(res["window"]) if res.get("window") else P["none"]],
         ["", src, "", ""]], [3 * cm, 6.2 * cm, 3.4 * cm, W - 12.6 * cm], header=False)]
 
@@ -493,14 +530,14 @@ def build_model_comparison_pdf(dataset, narrative="", language="fr", res=None, *
         # détail par scénario
         head = Paragraph(P["res_title"], st["h"])
         for s in scen:
-            hdr = [P["model"], P["cvm"], P["train"], P["test"]] + (["Accuracy", "Precision", "Recall", "ROC AUC"] if clf else ["MAE", "RMSE"]) + [P["sec"]]
+            hdr = [P["model"], P["cvm"], P["train"], P["test"]] + (["AUC"] if clf else []) + [P["sec"]]
             body = [hdr]
             for r in s["rows"]:
                 if "error" in r:
                     body.append([r["name"], P["err"]] + [""] * (len(hdr) - 2))
                     continue
-                m = [f3(r.get("accuracy")), f3(r.get("precision")), f3(r.get("recall")), f3(r.get("roc_auc"))] if clf else [f3(r.get("mae")), f3(r.get("rmse"))]
-                body.append([r["name"] + (" *" if r.get("overfit") else ""), f3(r.get("cv")), f3(r.get("train")), f3(r.get("test"))] + m + [f"{r['seconds']:.1f}"])
+                m = [f3(r.get("roc_auc"))] if clf else []
+                body.append([r["name"] + (" *" if r.get("overfit") else ""), f3(r.get("val")), f3(r.get("train")), f3(r.get("test"))] + m + [f"{r['seconds']:.1f}"])
             first_w = 3.4 * cm
             rest = (W - first_w) / (len(hdr) - 1)
             block = [Paragraph(_txt(label(s["id"], lang)), st["h3"]), table(body, [first_w] + [rest] * (len(hdr) - 1))]

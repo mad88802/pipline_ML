@@ -106,6 +106,11 @@
             <div class="eda-nav-text"><span class="eda-nav-title">Comparaison</span><small class="pp-nav-sub">Individuels vs Ensemble</small></div>
             <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
           </a>
+          <a href="#scenarios" class="eda-nav-item" data-panel="scenarios">
+            <span class="eda-nav-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg></span>
+            <div class="eda-nav-text"><span class="eda-nav-title">Outliers &amp; bruit</span><small class="pp-nav-sub">Avec vs sans · rapport PDF</small></div>
+            <span class="eda-nav-arrow" aria-hidden="true">&rsaquo;</span>
+          </a>
         </nav>
       </aside>
 
@@ -120,6 +125,7 @@
         <section class="ms-panel {% if loop.first %}active{% endif %}" id="panel-{{ gid }}" data-g="{{ gid }}"></section>
         {% endfor %}
         <section class="ms-panel" id="panel-compare" data-g="compare"></section>
+        <section class="ms-panel" id="panel-scenarios" data-g="scenarios"></section>
       </main>
     </div>
   {% endif %}
@@ -160,11 +166,7 @@
               ${m.params.filter(p => !m.study.overridden.includes(p.k)).length ? `<div class="ms-pp">${m.params.filter(p => !m.study.overridden.includes(p.k)).map(p => paramInput(m, p)).join('')}</div>` : ''}`
                         : `<span class="ms-lib">Non disponible dans le Python qui exécute l'application${m.error ? ' (' + esc(m.error) + ')' : ''}. Installez-la avec cette commande, puis redémarrez l'application :<br><code style="user-select:all;word-break:break-all">${esc(m.pip)}</code></span>`}
         </div>`).join('')}</div>
-      <div class="ms-row">
-        <label>Validation croisée (plis)
-          <select id="cv-${gid}">${MP.cv_choices.map(k => `<option ${k === 5 ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
-
-      </div>
+      <p class="ms-note">Sélection des modèles sur une validation (20 % du train mis de côté). Métriques : ${clf ? 'F1 pondéré et AUC' : 'R²'}.</p>
       <div class="ms-actions">
         <button class="btn btn-primary" id="run-${gid}">Entraîner et comparer</button>
         <span id="msg-${gid}" style="color:var(--text-muted);font-size:.85rem"></span>
@@ -196,7 +198,7 @@
   function drawViz(gid, r) {
     const names = r.results.map(m => m.name);
     Plotly.newPlot('bars-' + gid, [
-      { type: 'bar', name: 'CV (train)', x: names, y: r.results.map(m => m.cv_mean), marker: { color: '#14b8a6' } },
+      { type: 'bar', name: 'Validation', x: names, y: r.results.map(m => m.val_score), marker: { color: '#14b8a6' } },
       { type: 'bar', name: 'Test', x: names, y: r.results.map(m => m.test_score), marker: { color: '#f59e0b' } }
     ], Object.assign(PLOT(), { barmode: 'group', title: { text: `${r.metric} par modèle`, font: { size: 14 } }, yaxis: { rangemode: 'tozero' }, legend: { orientation: 'h', y: -0.2 } }), PCFG);
 
@@ -229,50 +231,49 @@
 
   function learnerBody(gid, key, r) {
     const lr = r.learners[key], fin = r.results.find(m => m.id === key);
-    const ok = lr.variants.filter(v => !v.error).sort((a, b) => (b.cv_mean ?? -1e9) - (a.cv_mean ?? -1e9));
+    const ok = lr.variants.filter(v => !v.error).sort((a, b) => (b.val_score ?? -1e9) - (a.val_score ?? -1e9));
     const bad = lr.variants.filter(v => v.error);
-    const head2 = clf ? '<th>Accuracy</th><th>F1</th>' : '<th>MAE</th><th>RMSE</th>';
-    const c2 = v => clf ? `<td>${pct(v.test.accuracy)}</td><td>${pct(v.test.f1)}</td>` : `<td>${f3(v.test.mae)}</td><td>${f3(v.test.rmse)}</td>`;
+    const head2 = clf ? '<th>AUC</th>' : '';
+    const c2 = v => clf ? `<td>${f3(v.test.roc_auc)}</td>` : '';
     const rows = ok.map(v => `<tr class="${v.id === lr.best_variant ? 'best' : ''}">
         <td><b>${esc(v.label)}</b>${v.id === lr.best_variant ? '<span class="ms-badge">Meilleure variante</span>' : ''}${v.overfit ? '<span class="ms-badge of" title="Score train bien supérieur au score test">Sur-apprentissage</span>' : ''}</td>
-        <td>${score(v.cv_mean)} <small style="color:var(--text-muted)">± ${clf ? (100 * (v.cv_std || 0)).toFixed(1) : f3(v.cv_std)}</small></td>
+        <td>${score(v.val_score)}</td>
         <td>${score(v.train_score)}</td><td>${score(v.test_score)}</td>${c2(v)}<td>${v.seconds} s</td></tr>`).join('');
     return `
-      <div style="overflow-x:auto"><table class="ms-table"><thead><tr><th>Variante</th><th>CV (${r.config.cv} plis)</th><th>Train</th><th>Test</th>${head2}<th>Durée</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div style="overflow-x:auto"><table class="ms-table"><thead><tr><th>Variante</th><th>Validation</th><th>Train</th><th>Test</th>${head2}<th>Durée</th></tr></thead><tbody>${rows}</tbody></table></div>
       ${bad.map(v => `<p class="ms-warn">${esc(v.label)} : échec (${esc(v.error)}).</p>`).join('')}
       <div class="ms-charts"><div class="ms-chart" id="lv-${gid}-${key}"></div><div class="ms-chart" id="ls-${gid}-${key}"></div></div>
 `;
   }
 
   function drawLearner(gid, key, r) {
-    const lr = r.learners[key], ok = lr.variants.filter(v => !v.error).sort((a, b) => (b.cv_mean ?? -1e9) - (a.cv_mean ?? -1e9));
+    const lr = r.learners[key], ok = lr.variants.filter(v => !v.error).sort((a, b) => (b.val_score ?? -1e9) - (a.val_score ?? -1e9));
     const names = ok.map(v => v.label);
     Plotly.newPlot(`lv-${gid}-${key}`, [
       { type: 'bar', name: 'Train', x: names, y: ok.map(v => v.train_score), marker: { color: '#94a3b8' } },
-      { type: 'bar', name: 'CV', x: names, y: ok.map(v => v.cv_mean), marker: { color: ok.map(v => v.id === lr.best_variant ? '#10b981' : '#14b8a6') } },
+      { type: 'bar', name: 'Validation', x: names, y: ok.map(v => v.val_score), marker: { color: ok.map(v => v.id === lr.best_variant ? '#10b981' : '#14b8a6') } },
       { type: 'bar', name: 'Test', x: names, y: ok.map(v => v.test_score), marker: { color: '#f59e0b' } }
     ], Object.assign(PLOT(), { barmode: 'group', title: { text: `${r.metric} par variante`, font: { size: 14 } }, yaxis: { rangemode: 'tozero' },
         xaxis: { tickangle: -25, automargin: true }, legend: { orientation: 'h', y: -0.45 }, margin: { t: 40, r: 20, b: 60, l: 55 } }), PCFG);
     const sw = lr.sweep, pts = sw.points, x = pts.map(p => xlab(p.value)), bi = pts.findIndex(p => p.value === sw.chosen);
     Plotly.newPlot(`ls-${gid}-${key}`, [
       { type: 'scatter', mode: 'lines+markers', name: 'Train', x, y: pts.map(p => p.train), line: { color: '#94a3b8', dash: 'dot' }, marker: { size: 7 } },
-      { type: 'scatter', mode: 'lines+markers', name: 'Validation croisée', x, y: pts.map(p => p.cv), line: { color: '#14b8a6', width: 3 }, marker: { size: 8 },
-        error_y: { type: 'data', array: pts.map(p => p.cv_std || 0), visible: true, color: 'rgba(20,184,166,.45)' } },
-      ...(bi >= 0 ? [{ type: 'scatter', mode: 'markers', name: 'Choisi', x: [x[bi]], y: [pts[bi].cv], marker: { size: 16, symbol: 'star', color: '#f59e0b', line: { color: '#fff', width: 1 } } }] : [])
+      { type: 'scatter', mode: 'lines+markers', name: 'Validation', x, y: pts.map(p => p.val), line: { color: '#14b8a6', width: 3 }, marker: { size: 8 } },
+      ...(bi >= 0 ? [{ type: 'scatter', mode: 'markers', name: 'Choisi', x: [x[bi]], y: [pts[bi].val], marker: { size: 16, symbol: 'star', color: '#f59e0b', line: { color: '#fff', width: 1 } } }] : [])
     ], Object.assign(PLOT(), { title: { text: `${sw.label} — variante « ${lr.best_label} »`, font: { size: 14 } }, xaxis: { title: sw.label, type: 'category' },
         yaxis: { title: r.metric }, legend: { orientation: 'h', y: -0.25 } }), PCFG);
   }
 
   function render(gid, r, autoOpen) {
     const best = r.results.find(m => m.id === r.best);
-    const head = clf ? '<th>Accuracy</th><th>Précision</th><th>Rappel</th><th>F1</th><th>AUC</th>' : '<th>R²</th><th>MAE</th><th>RMSE</th>';
+    const head = clf ? '<th>F1 (test)</th><th>AUC (test)</th>' : '<th>R² (test)</th>';
     const cells = m => clf
-      ? `<td>${pct(m.test.accuracy)}</td><td>${pct(m.test.precision)}</td><td>${pct(m.test.recall)}</td><td>${pct(m.test.f1)}</td><td>${f3(m.test.roc_auc)}</td>`
-      : `<td>${f3(m.test.r2)}</td><td>${f3(m.test.mae)}</td><td>${f3(m.test.rmse)}</td>`;
+      ? `<td>${pct(m.test.f1)}</td><td>${f3(m.test.roc_auc)}</td>`
+      : `<td>${f3(m.test.r2)}</td>`;
     const rows = r.results.map(m => `<tr class="${m.id === r.best ? 'best' : ''}">
         <td><b>${esc(m.name)}</b>${m.variant ? ` <span style="color:var(--text-secondary)">· ${esc(m.variant)}</span>` : ''}${m.id === r.best ? '<span class="ms-badge">Meilleur</span>' : ''}${m.overfit ? '<span class="ms-badge of" title="Score train bien supérieur au score test">Sur-apprentissage</span>' : ''}
           <div class="ms-params-cell">${Object.entries(m.params).map(([k, v]) => `${esc(k)}=${v === null ? 'None' : esc(v)}`).join(' · ')}</div></td>
-        <td>${score(m.cv_mean)} <small style="color:var(--text-muted)">± ${clf ? (100 * (m.cv_std || 0)).toFixed(1) : f3(m.cv_std)}</small></td>
+        <td>${score(m.val_score)}</td>
         <td>${score(m.train_score)}</td>${cells(m)}<td>${m.seconds} s</td></tr>`).join('');
     const box = $('#res-' + gid);
     box.style.display = '';
@@ -290,9 +291,9 @@
           <span class="acc-text"><span class="acc-title">${L.length ? 'Résultat général — les ' + L.length + ' modèles' : 'Résultats'}</span><span class="acc-hint">${L.length ? 'Meilleurs modèles face à face' : 'Tableau des scores par modèle'}</span></span><span class="acc-chev" aria-hidden="true">›</span></button>
         <div class="acc-body" hidden>
           <p style="color:var(--text-secondary);font-size:.88rem;margin:.2rem 0 .6rem">
-            Meilleur modèle selon la validation croisée (${esc(r.metric)}) : <b>${esc(best.name)}</b>, avec ${score(best.test_score)} sur le jeu de test (${r.n_test} lignes jamais vues).</p>
+            Meilleur modèle selon la validation (${esc(r.metric)}) : <b>${esc(best.name)}</b>, avec ${score(best.test_score)} sur le jeu de test (${r.n_test} lignes jamais vues).</p>
           <div style="overflow-x:auto"><table class="ms-table">
-            <thead><tr><th>Modèle</th><th>CV (${r.config.cv} plis)</th><th>Train</th>${head}<th>Durée</th></tr></thead>
+            <thead><tr><th>Modèle</th><th>Validation</th><th>Train</th>${head}<th>Durée</th></tr></thead>
             <tbody>${rows}</tbody></table></div>
         </div>
       </div>
@@ -332,7 +333,7 @@
     try {
       const res = await fetch(`/api/model/${encodeURIComponent(ds)}/run`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: MP.task, group: gid, models: chosen(gid), cv: +$('#cv-' + gid).value, tune: $('#tune-' + gid) ? $('#tune-' + gid).checked : false, params: readParams(gid) })
+        body: JSON.stringify({ task: MP.task, group: gid, models: chosen(gid), tune: $('#tune-' + gid) ? $('#tune-' + gid).checked : false, params: readParams(gid) })
       });
       const j = await res.json();
       if (!res.ok || !j.job_id) throw new Error(j.message || 'Erreur');
@@ -366,7 +367,7 @@
     const missing = Object.keys(S).filter(k => !S[k]);
     if (missing.length) {
       box.innerHTML = `<div class="cmp-empty"><b>Comparaison impossible pour l'instant.</b><br>
-        Il faut d'abord entraîner les deux familles (avec les mêmes réglages de validation croisée) :
+        Il faut d'abord entraîner les deux familles (avec les mêmes réglages) :
         ${missing.map(k => `<br>• ${esc(FAM[k].label)} : pas encore entraîné`).join('')}<br>
         ${missing.map(k => `<button class="btn btn-primary" data-go="${k}">Aller à « ${esc(FAM[k].label)} »</button>`).join('')}</div>`;
       $$('#panel-compare [data-go]').forEach(b => b.addEventListener('click', () => { history.replaceState(null, '', '#' + b.dataset.go); show(b.dataset.go); }));
@@ -374,7 +375,7 @@
     }
     const all = [];
     Object.keys(S).forEach(f => S[f].results.forEach(m => all.push({ ...m, fam: f })));
-    all.sort((a, b) => (b.cv_mean ?? -1e9) - (a.cv_mean ?? -1e9));
+    all.sort((a, b) => (b.val_score ?? -1e9) - (a.val_score ?? -1e9));
     const best = f => all.find(m => m.fam === f);
     const stat = f => {
       const ms = all.filter(m => m.fam === f);
@@ -382,7 +383,7 @@
                meanTime: avg(ms.map(m => m.seconds)), totalTime: ms.reduce((s, m) => s + m.seconds, 0), overfit: ms.filter(m => m.overfit).length };
     };
     const st = { individual: stat('individual'), ensemble: stat('ensemble') };
-    const winner = (st.ensemble.best.cv_mean ?? -1e9) >= (st.individual.best.cv_mean ?? -1e9) ? 'ensemble' : 'individual';
+    const winner = (st.ensemble.best.val_score ?? -1e9) >= (st.individual.best.val_score ?? -1e9) ? 'ensemble' : 'individual';
     const loser = winner === 'ensemble' ? 'individual' : 'ensemble';
     const W = st[winner].best, L = st[loser].best;
     const gapTest = (W.test_score ?? 0) - (L.test_score ?? 0);
@@ -392,42 +393,42 @@
     const famCard = f => `<div class="cmp-card ${f === winner ? 'win' : ''}">
         <h3><span class="cmp-dot" style="background:${FAM[f].color}"></span>${esc(FAM[f].label)}${f === winner ? '<span class="ms-badge">Gagnant</span>' : ''}</h3>
         <dl><dt>Meilleur modèle</dt><dd><b>${esc(st[f].best.name)}</b></dd>
-            <dt>CV (classement)</dt><dd>${score(st[f].best.cv_mean)}</dd>
+            <dt>Validation (classement)</dt><dd>${score(st[f].best.val_score)}</dd>
             <dt>Score test</dt><dd>${score(st[f].best.test_score)}</dd>
             <dt>Score test moyen (${st[f].n} modèles)</dt><dd>${score(st[f].meanTest)}</dd>
             <dt>Durée moyenne / modèle</dt><dd>${st[f].meanTime.toFixed(1)} s</dd>
             <dt>Durée totale</dt><dd>${st[f].totalTime.toFixed(1)} s</dd>
             <dt>Sur-apprentissage</dt><dd>${st[f].overfit} modèle(s)</dd></dl></div>`;
 
-    const head = clf ? '<th>Accuracy</th><th>F1</th>' : '<th>R²</th><th>RMSE</th>';
-    const cells = m => clf ? `<td>${pct(m.test.accuracy)}</td><td>${pct(m.test.f1)}</td>` : `<td>${f3(m.test.r2)}</td><td>${f3(m.test.rmse)}</td>`;
+    const head = clf ? '<th>AUC</th>' : '';
+    const cells = m => clf ? `<td>${f3(m.test.roc_auc)}</td>` : '';
     const rows = all.map((m, i) => `<tr class="${i === 0 ? 'best' : ''}">
         <td>${i + 1}</td><td><b>${esc(m.label || m.name)}</b>${i === 0 ? '<span class="ms-badge">Meilleur global</span>' : ''}${m.overfit ? '<span class="ms-badge of">Sur-apprentissage</span>' : ''}</td>
         <td><span class="cmp-dot" style="background:${FAM[m.fam].color}"></span>${esc(FAM[m.fam].label)}</td>
-        <td>${score(m.cv_mean)}</td><td>${score(m.train_score)}</td><td>${score(m.test_score)}</td>${cells(m)}<td>${m.seconds} s</td></tr>`).join('');
+        <td>${score(m.val_score)}</td><td>${score(m.train_score)}</td><td>${score(m.test_score)}</td>${cells(m)}<td>${m.seconds} s</td></tr>`).join('');
 
     const PARTS = {
       individual: `<div class="cmp-fam">${famCard('individual')}</div>`,
       ensemble: `<div class="cmp-fam">${famCard('ensemble')}</div>`,
       ranking: `
-      <h3 class="ms-h3">Classement général (${esc(S.individual.metric)} en validation croisée)</h3>
+      <h3 class="ms-h3">Classement général (${esc(S.individual.metric)} en validation)</h3>
       <div style="overflow-x:auto"><table class="ms-table">
-        <thead><tr><th>#</th><th>Modèle</th><th>Famille</th><th>CV</th><th>Train</th><th>Test</th>${head}<th>Durée</th></tr></thead>
+        <thead><tr><th>#</th><th>Modèle</th><th>Famille</th><th>Validation</th><th>Train</th><th>Test</th>${head}<th>Durée</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
-      <p class="ms-note">Les deux familles sont comparées sur le même train / test. Pour une comparaison équitable, entraînez-les avec les mêmes réglages (plis de validation croisée, optimisation activée ou non).</p>`,
+      <p class="ms-note">Les deux familles sont comparées sur le même train / test. Pour une comparaison équitable, entraînez-les avec les mêmes réglages (optimisation activée ou non).</p>`,
       charts: `
       <div class="ms-charts"><div class="ms-chart" id="cmp-bars"></div><div class="ms-chart" id="cmp-time"></div></div>`,
       conclusion: `
       <div class="cmp-verdict">
-        <p>🏆 <b>${esc(FAM[winner].label)}</b> l'emporte : <b>${esc(W.name)}</b> (${esc(MP.groups[winner].title)}) obtient ${score(W.cv_mean)} en validation croisée et ${score(W.test_score)} sur le test,
-        contre ${score(L.cv_mean)} / ${score(L.test_score)} pour <b>${esc(L.name)}</b> (${esc(FAM[loser].label)}).
+        <p>🏆 <b>${esc(FAM[winner].label)}</b> l'emporte : <b>${esc(W.name)}</b> (${esc(MP.groups[winner].title)}) obtient ${score(W.val_score)} en validation et ${score(W.test_score)} sur le test,
+        contre ${score(L.val_score)} / ${score(L.test_score)} pour <b>${esc(L.name)}</b> (${esc(FAM[loser].label)}).
         ${Math.abs(gapTest) < (clf ? 0.01 : 0.01) ? 'L\'écart sur le test est négligeable : le choix peut se faire sur la simplicité ou la rapidité.' : `Écart sur le test : ${diff(Math.abs(gapTest), 0)}${gapTest >= 0 ? ' en faveur du gagnant' : ' (le test favorise l\'autre famille)'}.`}</p>
         <p>⏱️ ${esc(FAM[faster].label)} est ${ratio.toFixed(1)}× plus rapide en moyenne (${st[faster].meanTime.toFixed(1)} s contre ${st[faster === 'individual' ? 'ensemble' : 'individual'].meanTime.toFixed(1)} s par modèle).</p>
         ${st[winner].overfit + st[loser].overfit ? `<p>⚠️ ${st.individual.overfit + st.ensemble.overfit} modèle(s) en sur-apprentissage (score train bien supérieur au test) : à relativiser.</p>` : ''}
       </div>`
     };
     const ICO = {"individual": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>", "ensemble": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 3v18M12 8l-5 4M12 12l5-4M12 16l-4 3M12 16l4 3\"/></svg>", "ranking": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3\"/></svg>", "charts": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 3v18h18\"/><path d=\"M7 15l4-4 3 3 5-6\"/></svg>", "conclusion": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z\"/><path d=\"M14 3v5h5M9 13h6M9 17h6\"/></svg>"};
-    const HINT = {"individual": "Meilleur modèle et scores", "ensemble": "Meilleur modèle et scores", "ranking": "Tous les modèles classés", "charts": "CV vs test, score vs durée", "conclusion": "Verdict de la comparaison"};
+    const HINT = {"individual": "Meilleur modèle et scores", "ensemble": "Meilleur modèle et scores", "ranking": "Tous les modèles classés", "charts": "Validation vs test, score vs durée", "conclusion": "Verdict de la comparaison"};
     box.innerHTML = '<div class="acc-list cmp-acc" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:1.1rem;max-width:none">' + Object.keys(CMP_SUBS).map(k => `<div class="acc-item" data-sub="${k}">
       <button type="button" class="acc-head" aria-expanded="false"><span class="acc-ico">${ICO[k]}</span>
         <span class="acc-text"><span class="acc-title">${CMP_SUBS[k]}</span><span class="acc-hint">${HINT[k]}</span></span><span class="acc-chev" aria-hidden="true">›</span></button>
@@ -443,9 +444,9 @@
     function drawCharts() {
     const names = all.map(m => m.label || m.name), col = all.map(m => FAM[m.fam].color);
     Plotly.newPlot('cmp-bars', [
-      { type: 'bar', name: 'CV (train)', x: names, y: all.map(m => m.cv_mean), marker: { color: col, opacity: .45 } },
+      { type: 'bar', name: 'Validation', x: names, y: all.map(m => m.val_score), marker: { color: col, opacity: .45 } },
       { type: 'bar', name: 'Test', x: names, y: all.map(m => m.test_score), marker: { color: col } }
-    ], Object.assign(PLOT(), { barmode: 'group', title: { text: `${S.individual.metric} : CV (clair) vs Test (foncé)`, font: { size: 14 } }, yaxis: { rangemode: 'tozero' }, showlegend: false }), PCFG);
+    ], Object.assign(PLOT(), { barmode: 'group', title: { text: `${S.individual.metric} : Validation (clair) vs Test (foncé)`, font: { size: 14 } }, yaxis: { rangemode: 'tozero' }, showlegend: false }), PCFG);
     Plotly.newPlot('cmp-time', Object.keys(FAM).map(f => {
       const ms = all.filter(m => m.fam === f);
       return { type: 'scatter', mode: 'markers+text', name: FAM[f].label, x: ms.map(m => m.seconds), y: ms.map(m => m.test_score), text: ms.map(m => m.name),
@@ -454,11 +455,137 @@
     }
   }
 
+  /* ---------- outliers & bruit : avec vs sans (+ rapport PDF) ---------- */
+  const SC_LABEL = { raw: 'A. Avec outliers, avec bruit', no_outliers: 'B. Sans outliers, avec bruit', no_noise: 'C. Avec outliers, sans bruit', clean: 'D. Sans outliers, sans bruit' };
+  const SC_SHORT = { raw: 'A. Brut', no_outliers: 'B. Sans outliers', no_noise: 'C. Sans bruit', clean: 'D. Sans les deux' };
+  const SC_COL = { raw: '#1d4ed8', no_outliers: '#0ea5e9', no_noise: '#f59e0b', clean: '#10b981' };
+  const mdb = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  let scRes = null, scBuilt = false;
+
+  function buildScenarios() {
+    if (scBuilt) return;
+    scBuilt = true;
+    $('#panel-scenarios').innerHTML = `
+      <p class="ms-note" style="margin-top:0">Résultats des mêmes modèles sur la donnée <b>brute</b>, <b>sans outliers</b> (One-Class SVM, retirés du train seulement),
+        <b>sans bruit</b> (moyenne mobile, séries temporelles seulement) et <b>sans les deux</b>. Les résultats déjà enregistrés dans la base sont affichés directement, sans réentraîner.</p>
+      <div class="ms-actions">
+        <label style="font-size:.85rem">Fenêtre de lissage <input type="number" id="sc-win" min="2" max="60" value="5" style="width:4.5rem"></label>
+        <button class="btn" id="sc-run" disabled>Recalculer (réentraîne les modèles)</button>
+        <button class="btn" id="sc-pdf" disabled>Générer le rapport PDF</button>
+        <span id="sc-msg" style="color:var(--text-muted);font-size:.85rem"></span>
+      </div>
+      <div class="ms-res" id="sc-res" style="display:none"></div>`;
+    $('#sc-run').addEventListener('click', runScenarios);
+    $('#sc-pdf').addEventListener('click', makeScenarioPdf);
+    loadSavedScenarios();
+  }
+
+  /* résultats déjà enregistrés dans analysis.db : aucun entraînement */
+  async function loadSavedScenarios() {
+    const msg = $('#sc-msg');
+    msg.textContent = 'Lecture des résultats enregistrés…';
+    try {
+      const r = await fetch(`${scUrl('saved')}?task=${MP.task}`);
+      const j = await r.json();
+      if (j.status === 'error') throw new Error(j.message || 'Erreur');
+      if (j.status === 'none') {
+        msg.textContent = 'Aucune comparaison enregistrée pour ce dataset : lancez-la une première fois.';
+        $('#sc-run').disabled = false; $('#sc-run').className = 'btn btn-primary'; $('#sc-run').textContent = 'Lancer la comparaison';
+        return;
+      }
+      scRes = j.result;
+      renderScenarioResult(scRes);
+      msg.textContent = (j.exact ? 'Résultats enregistrés le ' : 'Dernier résultat enregistré le ') + String(scRes.created_at || '').replace('T', ' à ') +
+        (j.exact ? '.' : ' (calculé avec des réglages éventuellement différents des réglages actuels).');
+      $('#sc-pdf').disabled = false; $('#sc-run').disabled = false;
+    } catch (e) {
+      msg.innerHTML = `<span style="color:#dc2626">${esc(e.message)}</span>`;
+      $('#sc-run').disabled = false;
+    }
+  }
+
+  const scBody = () => ({ task: MP.task, window: parseInt($('#sc-win').value, 10) || null });
+  const scUrl = p => `/api/scenarios/${encodeURIComponent(ds)}/${p}`;
+
+  async function runScenarios() {
+    const btn = $('#sc-run'), msg = $('#sc-msg');
+    btn.disabled = true; $('#sc-pdf').disabled = true; msg.textContent = 'Démarrage…';
+    try {
+      const r = await fetch(scUrl('run'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...scBody(), refresh: true }) });
+      const j = await r.json();
+      if (j.status !== 'started') throw new Error(j.message || 'Échec du lancement');
+      for (;;) {
+        await new Promise(res => setTimeout(res, 800));
+        const s = await (await fetch(`/api/model/${encodeURIComponent(ds)}/status/${j.job_id}`)).json();
+        if (s.status === 'running') { msg.textContent = s.total ? `Calcul ${s.done}/${s.total} · ${s.current}` : 'Préparation des données…'; continue; }
+        if (s.status === 'error') throw new Error(s.message || 'Erreur');
+        scRes = s.result; break;
+      }
+      msg.textContent = 'Recalcul terminé et enregistré.';
+      renderScenarioResult(scRes);
+      $('#sc-pdf').disabled = false;
+    } catch (e) {
+      msg.innerHTML = `<span style="color:#dc2626">${esc(e.message)}</span>`;
+    } finally { btn.disabled = false; }
+  }
+
+  async function makeScenarioPdf() {
+    const btn = $('#sc-pdf'), msg = $('#sc-msg');
+    btn.disabled = true; msg.textContent = 'Génération du PDF…';
+    try {
+      const r = await fetch(scUrl('pdf'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...scBody(), language: 'fr' }) });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.message || 'Échec de la génération');
+      msg.innerHTML = `<a class="btn btn-primary" href="${esc(j.url)}" download="${esc(j.name)}">Télécharger ${esc(j.name)}</a>`;
+    } catch (e) {
+      msg.innerHTML = `<span style="color:#dc2626">${esc(e.message)}</span>`;
+    } finally { btn.disabled = false; }
+  }
+
+  function renderScenarioResult(res) {
+    const box = $('#sc-res'); box.style.display = '';
+    const sc = res.scenarios, nameOf = {};
+    sc.forEach(s => s.rows.forEach(r => { nameOf[r.id] = r.name; }));
+    const sv = v => v == null ? '—' : score(v);
+    const info = sc.map(s => `<tr><td>${esc(SC_LABEL[s.id] || s.id)}</td><td>${s.n_train.toLocaleString('fr-FR')}</td><td>${s.n_removed.toLocaleString('fr-FR')}</td><td>${esc(nameOf[s.best] || '—')}</td></tr>`).join('');
+    const pivot = res.models.map(k => `<tr><td>${esc(nameOf[k] || k)}</td>${sc.map(s => {
+      const r = s.rows.find(x => x.id === k);
+      if (!r || r.error) return '<td title="' + esc(r && r.error || '') + '">échec</td>';
+      return `<td>${s.best === k ? '<b>' + sv(r.test) + '</b>' : sv(r.test)}</td>`;
+    }).join('')}</tr>`).join('');
+    const sids = sc.filter(s => s.id !== 'raw').map(s => s.id);
+    const dl = res.deltas || {};
+    const fmtD = v => v == null ? '—' : (v >= 0 ? '+' : '') + (clf ? (100 * v).toFixed(1) + ' pts' : v.toFixed(3));
+    const dRows = res.models.map(k => `<tr><td>${esc(nameOf[k] || k)}</td>${sids.map(i => `<td>${fmtD((dl[i] || {})[k])}</td>`).join('')}</tr>`).join('');
+    box.innerHTML = `
+      ${res.notes && res.notes.includes('not_ts') ? '<p class="ms-note">Ce jeu de données n\'est pas une série temporelle : le bruit (moyenne mobile) ne s\'applique pas, seuls les scénarios avec / sans outliers sont comparés.</p>' : ''}
+      <h3 class="h3" style="margin:.8rem 0 .2rem">Scénarios comparés</h3>
+      <div style="overflow-x:auto"><table class="ms-table"><thead><tr><th>Scénario</th><th>Lignes train</th><th>Retirées</th><th>Meilleur modèle</th></tr></thead><tbody>${info}</tbody></table></div>
+      <h3 class="h3" style="margin:.8rem 0 .2rem">Score test (${esc(res.metric)}) — meilleur par scénario en gras</h3>
+      <div style="overflow-x:auto"><table class="ms-table"><thead><tr><th>Modèle</th>${sc.map(s => `<th>${esc(SC_SHORT[s.id] || s.id)}</th>`).join('')}</tr></thead><tbody>${pivot}</tbody></table></div>
+      <div id="sc-bars" style="height:340px"></div>
+      ${sids.length ? `<h3 class="h3" style="margin:.8rem 0 .2rem">Effet de chaque traitement (écart vs A. Brut)</h3>
+      <div style="overflow-x:auto"><table class="ms-table"><thead><tr><th>Modèle</th>${sids.map(i => `<th>${esc(SC_SHORT[i] || i)}</th>`).join('')}</tr></thead><tbody>${dRows}</tbody></table></div>` : ''}
+      <h3 class="h3" style="margin:.8rem 0 .2rem">Synthèse</h3>
+      <ul style="margin:.2rem 0 0 1.1rem;line-height:1.55">${String(res.summary_md || '').split('\n').filter(Boolean).map(l => `<li>${mdb(l.replace(/^- /, ''))}</li>`).join('')}</ul>`;
+    Plotly.newPlot('sc-bars', sc.map(s => ({
+      type: 'bar', name: SC_SHORT[s.id] || s.id, marker: { color: SC_COL[s.id] },
+      x: res.models.map(k => nameOf[k] || k),
+      y: res.models.map(k => { const r = s.rows.find(x => x.id === k); return r && !r.error ? r.test : null; })
+    })), Object.assign(PLOT(), { barmode: 'group', title: { text: `${res.metric} test par modèle et par scénario`, font: { size: 14 } }, yaxis: { rangemode: 'tozero' }, legend: { orientation: 'h', y: -0.2 } }), PCFG);
+  }
+
   /* ---------- sidebar : un panneau à la fois ---------- */
   function show(gid) {
-    if (gid !== 'compare' && !MP.groups[gid]) gid = Object.keys(MP.groups)[0];
+    if (gid !== 'compare' && gid !== 'scenarios' && !MP.groups[gid]) gid = Object.keys(MP.groups)[0];
     $$('#msNav .eda-nav-item').forEach(a => a.classList.toggle('active', a.dataset.panel === gid));
     $$('.ms-panel').forEach(p => p.classList.toggle('active', p.dataset.g === gid));
+    if (gid === 'scenarios') {
+      $('#msTitle').textContent = 'Outliers & bruit — avec vs sans (' + (clf ? 'classification' : 'régression') + ')';
+      buildScenarios();
+      const el = document.getElementById('sc-bars'); if (el && scRes) Plotly.Plots.resize(el);
+      return;
+    }
     if (gid === 'compare') {
       $('#msTitle').textContent = 'Comparaison — individuels vs ensemble (' + (clf ? 'classification' : 'régression') + ')';
       renderCompare();                              // recalculée à chaque affichage : toujours à jour après un nouvel entraînement

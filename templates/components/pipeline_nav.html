@@ -9,17 +9,35 @@
   ('model',               '04', 'Model Selection',    url_for('view_phase_detail', dataset_name=active_dataset, phase_name='model'),
      '<rect x="6" y="6" width="12" height="12" rx="2"/><rect x="10" y="10" width="4" height="4" rx="1"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/>'),
 ] %}
+{# Titres affichés au survol de chaque étape (liens directs vers les panneaux de l'étape) #}
+{% set eda_items = [('descriptive','Overview'),('noise','Noise'),('outliers','Outliers'),('distribution','Distributions'),('feature-importance','Feature importance'),('quality','Data quality')] %}
+{% set pp_items = [('overview','Aperçu'),('dups','Doublons'),('useless','Colonnes inutiles'),('missing','Valeurs manquantes'),('outliers','Outliers'),('noise','Bruit'),('encoding','Encodage'),('scaling','Feature Scaling'),('balance','Déséquilibre des classes')] %}
+{% set sp_items = [('xy','Identifier X et y'),('strategy','Choisir la stratégie de découpage'),('ratio','Choisir le ratio du split'),('preview','Aperçu du découpage et enregistrer le split')] %}
+{% set md_items = [('classification','Classification'),('regression','Régression')] %}
 <div class="cycle-pipeline-wrapper {% if compact_nav %}compact{% endif %}">
   <nav class="pipeline-stepper" aria-label="Étapes du pipeline ML">
     {% for key, num, label, href, icon in steps %}
-      <a href="{{ href }}" class="pstep {% if active_pipeline_phase == key %}active{% endif %}"
-         {% if active_pipeline_phase == key %}aria-current="step"{% endif %} title="{{ label }}">
-        <span class="pstep-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon|safe }}</svg>
-        </span>
-        <span class="pstep-index">{{ num }}</span>
-        <span class="pstep-label">{{ label }}</span>
-      </a>
+      <div class="pstep-item">
+        <a href="{{ href }}" class="pstep {% if active_pipeline_phase == key %}active{% endif %}"
+           {% if active_pipeline_phase == key %}aria-current="step"{% endif %} aria-haspopup="true">
+          <span class="pstep-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon|safe }}</svg>
+          </span>
+          <span class="pstep-index">{{ num }}</span>
+          <span class="pstep-label">{{ label }}</span>
+        </a>
+        <div class="pstep-menu" role="menu" aria-label="{{ label }}">
+          {% if key == 'eda' %}
+            {% for k, t in eda_items %}<a role="menuitem" href="{{ url_for('view_case_detail', dataset_name=active_dataset, case_name=k) }}">{{ t }}<span class="pstep-menu-arrow" aria-hidden="true">&rsaquo;</span></a>{% endfor %}
+          {% elif key == 'preprocessing' %}
+            {% for k, t in pp_items %}<a role="menuitem" href="{{ href }}#pp-{{ k }}">{{ t }}<span class="pstep-menu-arrow" aria-hidden="true">&rsaquo;</span></a>{% endfor %}
+          {% elif key == 'split' %}
+            {% for k, t in sp_items %}<a role="menuitem" href="{{ href }}#sp-{{ k }}">{{ t }}<span class="pstep-menu-arrow" aria-hidden="true">&rsaquo;</span></a>{% endfor %}
+          {% else %}
+            {% for k, t in md_items %}<a role="menuitem" href="{{ url_for('view_model_task', dataset_name=active_dataset, task=k) }}">{{ t }}<span class="pstep-menu-arrow" aria-hidden="true">&rsaquo;</span></a>{% endfor %}
+          {% endif %}
+        </div>
+      </div>
       {% if not loop.last %}
         <span class="pstep-separator" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
